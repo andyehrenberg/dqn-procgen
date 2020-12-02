@@ -193,7 +193,7 @@ class DQN(nn.Module):
         
         return value, q, rnn_hxs
     
-    def get_value(self, x, rnn_hxs, masks):
+    def get_value(self, x):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))

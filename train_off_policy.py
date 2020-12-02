@@ -91,13 +91,7 @@ def train(args, seeds):
     
     is_minigrid = args.env_name.startswith('MiniGrid')
 
-    #actor_critic = model_for_env_name(args, envs)
-    model = Agent(args = None, env = envs)#DQN(args = None, action_space = envs.action_space.n)
-    #model.to(device)
-
-    rollouts = RolloutStorage(args.num_steps, args.num_processes,
-                                envs.observation_space.shape, envs.action_space)
-                                #actor_critic.recurrent_hidden_state_size)
+    model = Agent(args = None, env = envs)
         
     mem = ReplayMemory(args, args.num_steps)
     
@@ -111,26 +105,12 @@ def train(args, seeds):
         logging.info("Saving checkpoint to %s", checkpointpath)
         torch.save(
             {
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": agent.optimizer.state_dict(),
+                "model_state_dict": model.online_net.state_dict(),
+                #"optimizer_state_dict": agent.optimizer.state_dict(),
                 "args": vars(args),
             },
             checkpointpath,
         )
-
-    #agent = algo.PPO(
-        #actor_critic,
-        #args.clip_param,
-        #args.ppo_epoch,
-        #args.num_mini_batch,
-        #args.value_loss_coef,
-        #args.entropy_coef,
-        #lr=args.lr,
-        #eps=args.eps,
-        #max_grad_norm=args.max_grad_norm,
-        #env_name=args.env_name)
-        
-    #agent = Agent(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -138,8 +118,8 @@ def train(args, seeds):
     else:
         obs = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
-    rollouts.obs[0].copy_(obs)
-    rollouts.to(device)
+    mem.transitions.data['obs'][0] = obs
+    #rollouts.to(device)
 
     episode_rewards = deque(maxlen=10)
     num_updates = int(
@@ -177,24 +157,17 @@ def train(args, seeds):
                 [[0.0] if 'bad_transition' in info.keys() else [1.0]
                  for info in infos])
             
-            mem.append(obs_id, action, reward, done)
-
-            rollouts.insert(
-                obs, recurrent_hidden_states, 
-                action, action_log_prob, action_log_dist, 
-                value, reward, masks, bad_masks, level_seeds)
+            mem.append(obs, action, reward, masks, value, level_seeds, action_log_prob, action_log_dist, bad_masks)
 
         with torch.no_grad():
-            obs_id = rollouts.obs[-1]
-            next_value = model.online_net.get_value(
-                obs_id, rollouts.recurrent_hidden_states[-1],
-                rollouts.masks[-1]).detach()
+            obs_id = mem.transitions.data['obs'][-1]
+            next_value = model.online_net.get_value(obs_id)
             
-        rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
+        mem.compute_returns(next_value, args.gamma, args.gae_lambda)
 
         # Update level sampler
         if level_sampler:
-            level_sampler.update_with_rollouts(rollouts)
+            level_sampler.update_with_rollouts(mem)
             
         loss = model.online_net.learn(mem)
         
@@ -202,7 +175,7 @@ def train(args, seeds):
             model.update_target_net()
 
         #value_loss, action_loss, dist_entropy = agent.update(rollouts)
-        rollouts.after_update()
+        mem.after_update()
         if level_sampler:
             level_sampler.after_update()
 

@@ -102,9 +102,9 @@ class ReplayMemory():
         self.transitions = SegmentTree(capacity)  # Store transitions in a wrap-around cyclic buffer within a sum tree for querying priorities
 
       # Adds state and action at time t, reward and terminal at time t + 1
-    def append(self, state, action, reward, terminal, value_pred, return_, level_seed, action_log_prob, action_log_dist, bad_mask):
+    def append(self, state, action, reward, terminal, value_pred, level_seed, action_log_prob, action_log_dist, bad_mask):
         state = state[-1].mul(255).to(dtype=torch.uint8, device=torch.device('cpu'))  # Only store last frame and discretise to save memory
-        self.transitions.append((self.t, state, action, reward, not terminal, value_pred, return_, level_seed, action_log_prob, action_log_dist, bad_mask), self.transitions.max)  # Store new transition with maximum priority
+        self.transitions.append((self.t, state, action, reward, not terminal, value_pred, 0, level_seed, action_log_prob, action_log_dist, bad_mask), self.transitions.max)  # Store new transition with maximum priority
         self.t = 0 if terminal else self.t + 1  # Start new episodes with t = 0
 
       # Returns the transitions with blank states where appropriate
@@ -159,10 +159,9 @@ class ReplayMemory():
         self.transitions.update(idxs, priorities)
         
     def after_update(self):
-        self.obs[0].copy_(self.obs[-1])
-        self.recurrent_hidden_states[0].copy_(self.recurrent_hidden_states[-1])
-        self.masks[0].copy_(self.masks[-1])
-        self.bad_masks[0].copy_(self.bad_masks[-1])
+        self.transitions.data['obs'][0] = self.transitions.data['obs'][-1]
+        self.transitions.data['mask'][0] = self.transitions.data['mask'][-1]
+        self.transitions.data['bad_mask'][0] = self.transitions.data['bad_mask'][-1]
 
     def compute_returns(self,
                         next_value,
