@@ -139,8 +139,8 @@ class LevelSampler():
         return self.strategy in ['gae', 'value_l1', 'one_step_td_error']    
 
     def _update_with_rollouts(self, rollouts, score_function):
-        level_seeds = rollouts.transitions.data['level_seed']
-        policy_logits = rollouts.transitions.data['action_log_dist']
+        level_seeds = rollouts.level_seeds
+        policy_logits = rollouts.action_log_dist
         done = ~(rollouts.transitions.data['mask'] > 0)
         total_steps, num_actors = policy_logits.shape[:2]
         num_decisions = len(policy_logits)
