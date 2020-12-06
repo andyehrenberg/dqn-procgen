@@ -91,9 +91,9 @@ def train(args, seeds):
     
     is_minigrid = args.env_name.startswith('MiniGrid')
 
-    model = Agent(args = None, env = envs)
+    model = Agent(args = args, env = envs)
         
-    mem = ReplayMemory(args, args.num_steps)
+    mem = ReplayMemory(args, args.capacity)
     
     priority_weight_increase = (1 - args.priority_weight) / (args.T_max - args.learn_start)
         
@@ -118,7 +118,7 @@ def train(args, seeds):
     else:
         obs = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
-    mem.transitions.data['obs'][0] = obs
+    mem.transitions.data['obs'][0] = (obs*255).numpy().astype(np.uint8)
     #rollouts.to(device)
 
     episode_rewards = deque(maxlen=10)
@@ -135,10 +135,10 @@ def train(args, seeds):
             
             # Sample actions
             with torch.no_grad():
-                obs_id = rollouts.obs[step]
+                obs_id = torch.Tensor(mem.transitions.data['obs'][0])/255.
                 value, action, action_log_dist, recurrent_hidden_states = model.act(
-                    obs_id, rollouts.recurrent_hidden_states[step], rollouts.masks[step])
-                action_log_prob = action_log_dist.gather(-1, action)
+                    obs_id, None, None)#rollouts.recurrent_hidden_states[step], rollouts.masks[step])
+                action_log_prob = action_log_dist[0,action,:][0,:,:]#.gather(-1, action)
 
             # Observe reward and next obs
             obs, reward, done, infos = envs.step(action)
@@ -156,6 +156,9 @@ def train(args, seeds):
             bad_masks = torch.FloatTensor(
                 [[0.0] if 'bad_transition' in info.keys() else [1.0]
                  for info in infos])
+            
+            action_log_dist = action_log_dist.numpy()
+            action_log_prob = action_log_prob.numpy()
             
             mem.append(obs, action, reward, masks, value, level_seeds, action_log_prob, action_log_dist, bad_masks)
 
