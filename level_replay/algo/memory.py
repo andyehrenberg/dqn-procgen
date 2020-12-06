@@ -5,8 +5,8 @@ Transition_dtype = np.dtype([('timestep', np.int32), ('obs', (np.uint8, (3, 64, 
                              ('action', np.int32), ('reward', np.float32), 
                              ('mask', np.float32), 
                              ('value_pred', (np.float32, (1, 1, 51))), ('returns', np.float32), 
-                             ('level_seed', np.int32), ('action_log_prob', np.float32), 
-                             ('action_log_dist', (np.float32, (5))), ('bad_mask', np.float32)])
+                             ('level_seed', np.int32), ('action_log_prob', np.float32, (1, 51)), 
+                             ('action_log_dist', (np.float32, (1, 15, 51))), ('bad_mask', np.float32)])
 blank_trans = (0, np.zeros((3, 64, 64), dtype=np.uint8),
                0, 0.0, 0.0, np.zeros((1, 1, 51)), 
                0, 0, 0, np.zeros((5)), 0.0)
