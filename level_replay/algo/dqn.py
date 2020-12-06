@@ -178,18 +178,18 @@ class DQN(nn.Module):
         self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
         self.fc_z_a = NoisyLinear(args.hidden_size, action_space * self.atoms, std_init=args.noisy_std)
 
-    def forward(self, x, rnn_hxs, masks, deterministic=True, log=True):
+    def forward(self, x, rnn_hxs, masks, deterministic=True, log=False):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
         a = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
         value, a = value.view(-1, 1, self.atoms), a.view(-1, self.action_space, self.atoms)
-        action_log_dist = value + a - a.mean(1, keepdim=True)  # Combine streams
+        q = value + a - a.mean(1, keepdim=True)  # Combine streams
         if log:  # Use log softmax for numerical stability
-            q = F.log_softmax(action_log_dist, dim=2)  # Log probabilities with action over second dimension
+            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension
         #action = torch.argmax(action_log_dist)   
         else:
-            q = F.softmax(q, dim=2)  # Probabilities with action over second dimension
+            q = F.softmax(q, dim=2) # Probabilities with action over second dimension
         
         return value, q, rnn_hxs
     
