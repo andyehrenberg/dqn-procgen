@@ -5,12 +5,12 @@ import torch
 from torch import optim
 from torch.nn.utils import clip_grad_norm_
 
-from DQN import DQN
+from level_replay.algo.dqn import DQN
 
 
 class Agent():
     def __init__(self, args, env):
-        self.action_space = env.action_space()
+        self.action_space = env.action_space.n
         self.atoms = args.atoms
         self.Vmin = args.V_min
         self.Vmax = args.V_max
@@ -52,7 +52,7 @@ class Agent():
     def act(self, state, rnn_hxs, masks):
         with torch.no_grad():
             value, q, rnn_hxs = self.online_net(state.unsqueeze(0), rnn_hxs, masks)
-            action = (q * self.support).sum(2).argmax(1).item()
+            action = (q * self.support).sum(2).argmax(1).reshape(-1, 1)
             return value, action, torch.log(q), rnn_hxs
 
     # Acts with an ε-greedy policy (used for evaluation only)
