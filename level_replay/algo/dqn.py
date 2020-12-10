@@ -171,33 +171,32 @@ class DQN(nn.Module):
         self.atoms = args.atoms
         self.action_space = action_space
         
-        self.features = ImpalaCNN(3)
+        self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
         self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
         self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
         self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
         self.fc_z_a = NoisyLinear(args.hidden_size, action_space * self.atoms, std_init=args.noisy_std)
 
-    def forward(self, x, rnn_hxs, masks, deterministic=True, log=False):
+    def forward(self, x, log=False):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
-        a = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
-        value, a = value.view(-1, 1, self.atoms), a.view(-1, self.action_space, self.atoms)
-        q = value + a - a.mean(1, keepdim=True)  # Combine streams
+        advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
+        value, advantage = value.view(-1, 1, self.atoms), advantage.view(-1, self.action_space, self.atoms)
+        q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
         if log:  # Use log softmax for numerical stability
-            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension
-        #action = torch.argmax(action_log_dist)   
+            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension   
         else:
             q = F.softmax(q, dim=2) # Probabilities with action over second dimension
         
-        return value, q, rnn_hxs
+        return q
     
-    def get_value(self, x):
-        x = self.features(x)
-        x = x.view(-1, self.conv_output_size)
-        value = self.fc_z_v(F.relu(self.fc_h_v(x)))
-        return value
+    #def get_value(self, x):
+        #x = self.features(x)
+        #x = x.view(-1, self.conv_output_size)
+        #value = self.fc_z_v(F.relu(self.fc_h_v(x)))
+        #return value
 
     def reset_noise(self):
         for name, module in self.named_children():
