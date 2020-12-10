@@ -16,8 +16,8 @@ import torch
 from baselines.logger import HumanOutputFormat
 
 from level_replay import utils
-from level_replay.algo.dqn import DQN
-from level_replay.algo.policy import LAP_DDQN
+from level_replay.algo.dqn import RainbowDQN, DQN
+from level_replay.algo.policy import Rainbow, DDQN
 from level_replay.algo.buffer import PrioritizedBuffer
 from level_replay.model import model_for_env_name
 from level_replay.storage import RolloutStorage
@@ -206,7 +206,7 @@ def train(args, seeds):
         args.device, True
     )
 
-    agent = LAP_DDQN(args)
+    agent = Rainbow(args)
     
     def checkpoint():
         if args.disable_checkpoint:

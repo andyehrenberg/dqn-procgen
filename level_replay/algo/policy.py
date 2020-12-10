@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from level_replay.algo.dqn import DQN
 from torch.nn.utils import clip_grad_norm_
 
-class LAP_DDQN(object):
+class Rainbow(object):
     def __init__(self, args):
 
         self.device = args.device
@@ -20,7 +20,7 @@ class LAP_DDQN(object):
         self.n = args.multi_step
         self.norm_clip = args.norm_clip
 
-        self.Q = DQN(args, self.action_space).to(self.device)
+        self.Q = RainbowDQN(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
 
@@ -107,12 +107,12 @@ class LAP_DDQN(object):
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+           target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
 
     def copy_target_update(self):
-        #if self.iterations % self.target_update_frequency == 0:
-        self.Q_target.load_state_dict(self.Q.state_dict())
+        if self.iterations % self.target_update_frequency == 0:
+             self.Q_target.load_state_dict(self.Q.state_dict())
 
 
     def save(self, filename):
@@ -126,9 +126,94 @@ class LAP_DDQN(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
+        
+class DDQN(object):
+    def __init__(self, args):
+        self.device = args.device
+        self.action_space = args.num_actions
+        self.batch_size = args.batch_size
+        self.norm_clip = args.norm_clip
 
-    # Evaluates Q-value based on single state (no batch)
-    def evaluate_q(self, state):
+        self.Q = DQN(args, self.action_space).to(self.device)
+        self.Q_target = copy.deepcopy(self.Q)
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
+
+        self.discount = args.discount
+
+        self.alpha = args.alpha
+        self.min_priority = args.min_priority
+
+        # Target update rule
+        self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        self.target_update_frequency = args.target_update_frequency
+        self.tau = args.tau
+
+        # Decay for eps
+        self.initial_eps = args.initial_eps
+        self.end_eps = args.end_eps
+        self.slope = (self.end_eps - self.initial_eps) / args.eps_decay_period
+
+        # Evaluation hyper-parameters
+        self.state_shape = (-1,) + args.state_dim
+        self.eval_eps = 0.001
+        self.num_actions = 15
+
+        # Number of training iterations
+        self.iterations = 0
+
+
+    def select_action(self, state, eval=False):
         with torch.no_grad():
-            _, action_log_dist = self.Q(state.unsqueeze(0), log = True)
-            return (action_log_dist * self.support).sum(2).max(1)[0].item()
+            q = self.Q(state)
+            action = q.argmax(1).reshape(-1, 1)
+            return action, None
+
+
+    def train(self, replay_buffer):
+        state, action, next_state, reward, done, ind, weights = replay_buffer.sample()
+
+        next_Q = self.Q(next_state)
+        next_action = next_Q.argmax(1).reshape(-1, 1)
+        target_Q = self.Q_target(next_state)
+        target_Q_at_a = target_Q.gather(1, next_action)
+        current_Q_at_a = self.Q(state).gather(1, action)
+        loss = F.smooth_l1_loss(current_Q_at_a, reward + args.gamma*target_Q_at_a, reduction='none')
+
+        self.Q.zero_grad()
+        (weights*loss).mean().backward()  # Backpropagate importance-weighted minibatch loss
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        self.Q_optimizer.step()
+
+        # Update target network by polyak or full copy every X iterations.
+        self.iterations += 1
+        self.maybe_update_target()
+
+        priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
+        replay_buffer.update_priority(ind, priority)
+
+
+    def huber(self, x):
+        return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
+
+
+    def polyak_target_update(self):
+        for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
+           target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+
+    def copy_target_update(self):
+        if self.iterations % self.target_update_frequency == 0:
+             self.Q_target.load_state_dict(self.Q.state_dict())
+
+
+    def save(self, filename):
+        torch.save(self.iterations, filename + "iterations")
+        torch.save(self.Q.state_dict(), f"{filename}Q_{self.iterations}")
+        torch.save(self.Q_optimizer.state_dict(), filename + "optimizer")
+
+
+    def load(self, filename):
+        self.iterations = torch.load(filename + "iterations")
+        self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
+        self.Q_target = copy.deepcopy(self.Q)
+        self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
