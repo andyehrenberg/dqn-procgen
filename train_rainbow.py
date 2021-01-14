@@ -68,7 +68,7 @@ class Args():
         self.evaluation_size = 500
         self.render = False
         self.checkpoint_interval = 0
-        self.memory_capacity = int(1e6)
+        self.memory_capacity = int(1e4)
         self.replay_frequency = 4
         self.norm_clip = 10
         self.batch_size = 32
@@ -84,7 +84,7 @@ class Args():
         self.device = torch.device("cuda:0" if self.cuda else "cpu")
         self.capacity = int(1e6)
         self.history_length = 4
-        self.multi_step = 3
+        self.multi_step = 1
         self.priority_weight = 0.4  # Initial importance sampling weight β, annealed to 1 over course of training
         self.priority_exponent = 0.5
         self.t = 0  # Internal episode timestep counter
@@ -166,9 +166,9 @@ def train(args, seeds):
     )
     stdout_logger = HumanOutputFormat(sys.stdout)
 
-    checkpointpath = os.path.expandvars(
-        os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar"))
-    )
+    #checkpointpath = os.path.expandvars(
+        #os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar"))
+    #)
 
     # Configure actor envs
     args = Args()
@@ -206,7 +206,7 @@ def train(args, seeds):
         args.device, True
     )
 
-    agent = Rainbow(args)
+    agent = DDQN(args)
     
     def checkpoint():
         if args.disable_checkpoint:
@@ -307,8 +307,8 @@ def train(args, seeds):
             episode_timesteps = 0
             episode_num += 1
             
-        if (t + 1) % args.eval_freq == 0:
-            evaluations.append(eval_policy(agent))
+        if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
+            evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
             np.save(f"./results/log.npy", evaluations)
         
 
@@ -321,7 +321,8 @@ def load_seeds(seed_path):
     seeds = open(seed_path).readlines()
     return [int(s) for s in seeds] 
 
-def eval_policy(policy, eval_episodes=10):
+def eval_policy(policy, seeds, start_level, level_sampler_args, num_levels, eval_episodes=10):
+    #seeds = generate_seeds(args.num_train_seeds)
     eval_envs, level_sampler = make_lr_venv(
         num_envs=args.num_processes, env_name=args.env_name,
         seeds=seeds, device=args.device,
@@ -357,7 +358,7 @@ def multi_step_reward(rewards, gamma):
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    args = Args()#parser.parse_args()
     
     print(args)
 

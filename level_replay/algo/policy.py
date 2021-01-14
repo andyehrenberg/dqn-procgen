@@ -133,6 +133,7 @@ class DDQN(object):
         self.action_space = args.num_actions
         self.batch_size = args.batch_size
         self.norm_clip = args.norm_clip
+        self.gamma = args.gamma
 
         self.Q = DQN(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
@@ -177,7 +178,7 @@ class DDQN(object):
         target_Q = self.Q_target(next_state)
         target_Q_at_a = target_Q.gather(1, next_action)
         current_Q_at_a = self.Q(state).gather(1, action)
-        loss = F.smooth_l1_loss(current_Q_at_a, reward + args.gamma*target_Q_at_a, reduction='none')
+        loss = F.smooth_l1_loss(current_Q_at_a, reward + self.gamma*target_Q_at_a, reduction='none')
 
         self.Q.zero_grad()
         (weights*loss).mean().backward()  # Backpropagate importance-weighted minibatch loss

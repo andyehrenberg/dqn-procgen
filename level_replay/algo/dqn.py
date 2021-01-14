@@ -191,12 +191,6 @@ class RainbowDQN(nn.Module):
             q = F.softmax(q, dim=2) # Probabilities with action over second dimension
         
         return q
-    
-    #def get_value(self, x):
-        #x = self.features(x)
-        #x = x.view(-1, self.conv_output_size)
-        #value = self.fc_z_v(F.relu(self.fc_h_v(x)))
-        #return value
 
     def reset_noise(self):
         for name, module in self.named_children():
@@ -210,10 +204,10 @@ class DQN(nn.Module):
         
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
-        self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-        self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-        self.fc_z_v = NoisyLinear(args.hidden_size, 1, std_init=args.noisy_std)
-        self.fc_z_a = NoisyLinear(args.hidden_size, action_space, std_init=args.noisy_std)
+        self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc_z_v = nn.Linear(args.hidden_size, 1)
+        self.fc_z_a = nn.Linear(args.hidden_size, action_space)
 
     def forward(self, x, log=False):
         x = self.features(x)
@@ -223,14 +217,3 @@ class DQN(nn.Module):
         value, advantage = value.view(-1, 1,), advantage.view(-1, self.action_space)
         q = value + advantage - advantage.mean(1, keepdim=True) # Combine streams
         return q
-    
-    #def get_value(self, x):
-        #x = self.features(x)
-        #x = x.view(-1, self.conv_output_size)
-        #value = self.fc_z_v(F.relu(self.fc_h_v(x)))
-        #return value
-
-    def reset_noise(self):
-        for name, module in self.named_children():
-            if 'fc' in name:
-                module.reset_noise()
