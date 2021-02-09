@@ -8,7 +8,6 @@ from torch.nn.utils import clip_grad_norm_
 
 class Rainbow(object):
     def __init__(self, args):
-
         self.device = args.device
         self.action_space = args.num_actions
         self.atoms = args.atoms
@@ -48,13 +47,11 @@ class Rainbow(object):
         # Number of training iterations
         self.iterations = 0
 
-
     def select_action(self, state, eval=False):
         with torch.no_grad():
             q = self.Q(state)
             action = (q * self.support).sum(2).argmax(1).reshape(-1, 1)
             return action, torch.log(q)
-
 
     def train(self, replay_buffer):
         state, action, next_state, reward, done, ind, weights = replay_buffer.sample()
@@ -100,26 +97,21 @@ class Rainbow(object):
         priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
 
-
     def huber(self, x):
         return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
-
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
              self.Q_target.load_state_dict(self.Q.state_dict())
-
 
     def save(self, filename):
         torch.save(self.iterations, filename + "iterations")
         torch.save(self.Q.state_dict(), f"{filename}Q_{self.iterations}")
         torch.save(self.Q_optimizer.state_dict(), filename + "optimizer")
-
 
     def load(self, filename):
         self.iterations = torch.load(filename + "iterations")
@@ -162,26 +154,33 @@ class DDQN(object):
         # Number of training iterations
         self.iterations = 0
 
-
     def select_action(self, state, eval=False):
         with torch.no_grad():
             q = self.Q(state)
             action = q.argmax(1).reshape(-1, 1)
             return action, None
 
-
     def train(self, replay_buffer):
         state, action, next_state, reward, done, ind, weights = replay_buffer.sample()
 
         next_Q = self.Q(next_state)
+        #print('Next Q: ', next_Q)
         next_action = next_Q.argmax(1).reshape(-1, 1)
+        #print('Next Action: ', next_action)
         target_Q = self.Q_target(next_state)
+        #print('Target Q: ', target_Q)
         target_Q_at_a = target_Q.gather(1, next_action)
+        #print('Target Q at a: ', target_Q_at_a)
         current_Q_at_a = self.Q(state).gather(1, action)
+        #print('Current Q at a: ', current_Q_at_a)
+        #Huber loss
         loss = F.smooth_l1_loss(current_Q_at_a, reward + self.gamma*target_Q_at_a, reduction='none')
+        #print('Loss vector: ', loss)
 
         self.Q.zero_grad()
-        (weights*loss).mean().backward()  # Backpropagate importance-weighted minibatch loss
+        mean_loss = (weights*loss).mean()
+        #print('Loss: ', mean_loss)
+        mean_loss.backward()  # Backpropagate importance-weighted minibatch loss
         clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
 
@@ -191,27 +190,24 @@ class DDQN(object):
 
         priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
-
+        
+        return mean_loss
 
     def huber(self, x):
         return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
-
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
              self.Q_target.load_state_dict(self.Q.state_dict())
-
 
     def save(self, filename):
         torch.save(self.iterations, filename + "iterations")
         torch.save(self.Q.state_dict(), f"{filename}Q_{self.iterations}")
         torch.save(self.Q_optimizer.state_dict(), filename + "optimizer")
-
 
     def load(self, filename):
         self.iterations = torch.load(filename + "iterations")

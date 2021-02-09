@@ -198,16 +198,16 @@ def train(args, seeds):
         paint_vel_info=args.paint_vel_info,
         level_sampler_args=level_sampler_args)
 
-    prioritized = True
-    replay_buffer = PrioritizedBuffer(
+    prioritized = False#True
+    replay_buffer = Buffer(
         args.state_dim,
         args.batch_size, 
         args.memory_capacity, 
-        args.device, True
+        args.device, prioritized
     )
 
     agent = DDQN(args)
-    
+
     def checkpoint():
         if args.disable_checkpoint:
             return
@@ -220,9 +220,8 @@ def train(args, seeds):
             },
             checkpointpath,
         )
-        
+
     evaluations = []
-    
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -231,49 +230,47 @@ def train(args, seeds):
         state = envs.reset()
     level_seeds.unsqueeze(-1)
     episode_rewards = deque(maxlen=10)
-    
+
     episode_start = True
     episode_reward = 0
     episode_timesteps = 0
     episode_num = 0
-    
+
     state_deque = deque(maxlen=args.multi_step)
     reward_deque = deque(maxlen=args.multi_step)
     action_deque = deque(maxlen=args.multi_step)
-
-    episode_rewards = deque(maxlen=10)
     #num_updates = int(
         #args.num_env_steps) // args.num_steps // args.num_processes
 
     timer = timeit.default_timer
     update_start_time = timer()
-    for t in range(int(args.T_max)):
+
+    losses = []
+
+    for t in trange(int(args.T_max)):
 
         episode_timesteps += 1
 
-        if t % args.replay_frequency == 0:
-            agent.Q.reset_noise()
-
         #if args.train_behavioral:
-        if t < args.start_timesteps:
+        if t < args.start_timesteps or np.random.uniform() < 0.01:
             action = torch.LongTensor([envs.action_space.sample()]).reshape(-1, 1)
         else:
-            action, q = agent.select_action(state)
+            action, _ = agent.select_action(state)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
+        #print(action, reward, done, infos)
         state_deque.append(state)
         reward_deque.append(reward)
         action_deque.append(action)
 
-        if len(state_deque) == args.multi_step or done:
-            n_reward = multi_step_reward(reward_deque, args.gamma)
-            n_state = state_deque[0]
-            n_action = action_deque[0]
-            replay_buffer.add(n_state, n_action, next_state, n_reward, np.float32(done), done, episode_start)
+        #if done:#len(state_deque) == args.multi_step or done:
+            #n_reward = multi_step_reward(reward_deque, args.gamma)
+            #n_state = state_deque[0]
+            #n_action = action_deque[0]
+        replay_buffer.add(state, action, next_state, reward, np.float32(done), done, episode_start)
 
         state = next_state
-        episode_reward += reward
         episode_start = False
 
         # Only consider "done" if episode terminates due to failure condition
@@ -290,12 +287,13 @@ def train(args, seeds):
                 level_seeds[i] = info['level_seed']
 
         # Train agent after collecting sufficient data
-        if t >= args.start_timesteps and (t + 1) % args.train_freq == 0:
+        if  (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss = agent.train(replay_buffer)
+            losses.append(loss)
 
-        if t % args.target_update == 0:
+        if t >= args.start_timesteps and t % args.target_update == 0:
             agent.copy_target_update()
-           
+
         if done:
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             #print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward}")
@@ -306,7 +304,7 @@ def train(args, seeds):
             episode_reward = 0
             episode_timesteps = 0
             episode_num += 1
-            
+
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
             np.save(f"./results/log.npy", evaluations)
