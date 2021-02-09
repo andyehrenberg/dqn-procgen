@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN
+from level_replay.algo.dqn import RainbowDQN, DDQN
 from torch.nn.utils import clip_grad_norm_
 
 class Rainbow(object):
@@ -65,15 +65,15 @@ class Rainbow(object):
             pns = self.Q_target(next_state)
             pns_a = pns.gather(1, next_action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
             target_Q = (
-                reward.expand(-1, self.atoms) + done * (self.discount ** self.n) * 
+                reward.expand(-1, self.atoms) + done * (self.discount ** self.n) *
                 pns_a
             )
 
         current_Q = self.Q(state).gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-        
+
         target_Q = target_Q.clamp(min=self.V_min, max=self.V_max)  # Clamp between supported values
         # Compute L2 projection of Tz onto fixed support z
-        b = (target_Q - self.V_min) / self.delta_z 
+        b = (target_Q - self.V_min) / self.delta_z
         l, u = b.floor().to(torch.int64), b.ceil().to(torch.int64)
         l[(u > 0) * (l == u)] -= 1
         u[(l < (self.atoms - 1)) * (l == u)] += 1
@@ -118,7 +118,7 @@ class Rainbow(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
-        
+
 class DDQN(object):
     def __init__(self, args):
         self.device = args.device
@@ -172,14 +172,20 @@ class DDQN(object):
         target_Q_at_a = target_Q.gather(1, next_action)
         #print('Target Q at a: ', target_Q_at_a)
         current_Q_at_a = self.Q(state).gather(1, action)
+<<<<<<< HEAD
         #print('Current Q at a: ', current_Q_at_a)
+=======
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         #Huber loss
         loss = F.smooth_l1_loss(current_Q_at_a, reward + self.gamma*target_Q_at_a, reduction='none')
         #print('Loss vector: ', loss)
 
         self.Q.zero_grad()
         mean_loss = (weights*loss).mean()
+<<<<<<< HEAD
         #print('Loss: ', mean_loss)
+=======
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         mean_loss.backward()  # Backpropagate importance-weighted minibatch loss
         clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
@@ -190,7 +196,11 @@ class DDQN(object):
 
         priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         return mean_loss
 
     def huber(self, x):

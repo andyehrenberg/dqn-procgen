@@ -99,10 +99,10 @@ class Args():
         self.arch='large'
         self.clip_param=0.2
         self.disable_checkpoint=False
-        self.distribution_mode='easy' 
+        self.distribution_mode='easy'
         self.entropy_coef=0.01
         self.final_num_test_seeds=1000
-        self.full_train_distribution=False 
+        self.full_train_distribution=False
         self.gae_lambda=0.95
         self.gamma=0.999
         self.hidden_size=256
@@ -129,11 +129,11 @@ class Args():
         self.save_interval=60
         self.seed=1
         self.seed_path=None
-        self.staleness_coef=0.1 
+        self.staleness_coef=0.1
         self.staleness_temperature=1.0
         self.staleness_transform='power'
         self.start_level=0
-        self.value_loss_coef=0.5, 
+        self.value_loss_coef=0.5,
         self.verbose=False
         self.weight_log_interval=1
         self.xpid='latest'
@@ -183,7 +183,7 @@ def train(args, seeds):
         temperature=args.level_replay_temperature,
         eps=args.level_replay_eps,
         rho=args.level_replay_rho,
-        nu=args.level_replay_nu, 
+        nu=args.level_replay_nu,
         alpha=args.level_replay_alpha,
         staleness_coef=args.staleness_coef,
         staleness_transform=args.staleness_transform,
@@ -201,8 +201,13 @@ def train(args, seeds):
     prioritized = False#True
     replay_buffer = Buffer(
         args.state_dim,
+<<<<<<< HEAD
         args.batch_size, 
         args.memory_capacity, 
+=======
+        args.batch_size,
+        args.memory_capacity,
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         args.device, prioritized
     )
 
@@ -236,9 +241,15 @@ def train(args, seeds):
     episode_timesteps = 0
     episode_num = 0
 
+<<<<<<< HEAD
     state_deque = deque(maxlen=args.multi_step)
     reward_deque = deque(maxlen=args.multi_step)
     action_deque = deque(maxlen=args.multi_step)
+=======
+    #state_deque = deque(maxlen=args.multi_step)
+    #reward_deque = deque(maxlen=args.multi_step)
+    #action_deque = deque(maxlen=args.multi_step)
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
     #num_updates = int(
         #args.num_env_steps) // args.num_steps // args.num_processes
 
@@ -246,9 +257,15 @@ def train(args, seeds):
     update_start_time = timer()
 
     losses = []
+<<<<<<< HEAD
 
     for t in trange(int(args.T_max)):
 
+=======
+
+    for t in trange(int(args.T_max)):
+
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         episode_timesteps += 1
 
         #if args.train_behavioral:
@@ -260,9 +277,15 @@ def train(args, seeds):
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
         #print(action, reward, done, infos)
+<<<<<<< HEAD
         state_deque.append(state)
         reward_deque.append(reward)
         action_deque.append(action)
+=======
+        #state_deque.append(state)
+        #reward_deque.append(reward)
+        #action_deque.append(action)
+>>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
 
         #if done:#len(state_deque) == args.multi_step or done:
             #n_reward = multi_step_reward(reward_deque, args.gamma)
@@ -308,7 +331,7 @@ def train(args, seeds):
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
             np.save(f"./results/log.npy", evaluations)
-        
+
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
@@ -317,7 +340,7 @@ def generate_seeds(num_seeds, base_seed=0):
 def load_seeds(seed_path):
     seed_path = os.path.expandvars(os.path.expanduser(seed_path))
     seeds = open(seed_path).readlines()
-    return [int(s) for s in seeds] 
+    return [int(s) for s in seeds]
 
 def eval_policy(policy, seeds, start_level, level_sampler_args, num_levels, eval_episodes=10):
     #seeds = generate_seeds(args.num_train_seeds)
@@ -329,7 +352,7 @@ def eval_policy(policy, seeds, start_level, level_sampler_args, num_levels, eval
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
         level_sampler_args=level_sampler_args)
-    
+
     avg_reward = 0.
     for _ in range(eval_episodes):
         state, level_seeds = eval_envs.reset()
@@ -357,7 +380,7 @@ def multi_step_reward(rewards, gamma):
 
 if __name__ == "__main__":
     args = Args()#parser.parse_args()
-    
+
     print(args)
 
     if args.verbose:

@@ -15,7 +15,7 @@ class AbstractBuffer():
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
         self.not_done = np.zeros((self.max_size, 1))
-        
+
     def add(self, state, action, next_state, reward, done, env_done, first_timestep):
         self.state[self.ptr] = state
         self.action[self.ptr] = action
@@ -25,18 +25,18 @@ class AbstractBuffer():
 
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
-        
+
     def sample(self):
         pass
-    
+
     def update_priority(self, ind, priority):
         pass
-        
-        
+
+
 class Buffer(AbstractBuffer):
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized = None):
         super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
-        
+
     def sample(self):
         ind = np.random.randint(0, self.size, size=self.batch_size)
 
@@ -51,13 +51,13 @@ class Buffer(AbstractBuffer):
         batch += (ind, torch.FloatTensor([1]).to(self.device))
 
         return batch
-    
-        
+
+
 class PrioritizedBuffer():
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized):
         super(PrioritizedBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
-        
+
         if self.prioritized:
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
