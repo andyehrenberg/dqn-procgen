@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import RainbowDQN, DDQN
+from level_replay.algo.dqn import RainbowDQN, DQN
 from torch.nn.utils import clip_grad_norm_
 
 class Rainbow(object):
@@ -172,20 +172,12 @@ class DDQN(object):
         target_Q_at_a = target_Q.gather(1, next_action)
         #print('Target Q at a: ', target_Q_at_a)
         current_Q_at_a = self.Q(state).gather(1, action)
-<<<<<<< HEAD
-        #print('Current Q at a: ', current_Q_at_a)
-=======
->>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         #Huber loss
         loss = F.smooth_l1_loss(current_Q_at_a, reward + self.gamma*target_Q_at_a, reduction='none')
         #print('Loss vector: ', loss)
 
         self.Q.zero_grad()
         mean_loss = (weights*loss).mean()
-<<<<<<< HEAD
-        #print('Loss: ', mean_loss)
-=======
->>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         mean_loss.backward()  # Backpropagate importance-weighted minibatch loss
         clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
@@ -196,11 +188,6 @@ class DDQN(object):
 
         priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
-<<<<<<< HEAD
-        
-=======
-
->>>>>>> e657cbe2dee117e3aec658fba91908f79864b32f
         return mean_loss
 
     def huber(self, x):
