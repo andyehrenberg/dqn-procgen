@@ -22,12 +22,12 @@ parser.add_argument(
 parser.add_argument(
     '--T_max',
     type=int,
-    default=int(5e3),#int(50e4)
+    default=5e3,#int(50e4)
     help='Total environment steps')
 parser.add_argument(
     '--max_episode_length',
     type=int,
-    default=int(108e3),
+    default=108e3,
     help='Max timesteps in one episode')
 
 #Model parameters
@@ -37,384 +37,306 @@ parser.add_argument(
     default=2.5e-4,
     help='learning rate')
 parser.add_argument(
-    'num_actions',
+    '--num_actions',
     type=int,
     default=15,
-    help='Action space'
-)
+    help='Action space dimension')
 parser.add_argument(
-    'state_dim',
+    '--state_dim',
     type=tuple,
-    default= (3, 64, 64)
-)
+    default= (3, 64, 64))
 parser.add_argument(
-    'no_cuda',
+    '--no_cuda',
     type=bool,
     default=True,
-    help='Whether to use GPU'
-)
+    help='Whether to use GPU')
 parser.add_argument(
-    'dicount,
+    '--discount',
     type=float,
     default=0.99,
-    help='Discount factor on future returns'
-)
+    help='Discount factor on future returns')
 parser.add_argument(
-    'adam_eps',
+    '--adam_eps',
     type=float,
-    default=1.5e-4
-)
+    default=1.5e-4)
 parser.add_argument(
-    'optimizer',
+    '--optimizer',
     default='Adam',
-    help='Optimizer to use'
-)
+    help='Optimizer to use')
 parser.add_argument(
-    'polyak_target_update',
+    '--polyak_target_update',
     type=bool,
     default=False,
-    help='Whether to use polyak update to target network'
-)
+    help='Whether to use polyak update to target network')
 parser.add_argument(
-    'target_update',
+    '--target_update',
     type=int,
-    default=int(1e3),#int(8e3)
-    help='How often to update target network'
-)
+    default=1e3,#int(8e3)
+    help='How often to update target network')
 parser.add_argument(
-    'tau',
+    '--tau',
     type=float,
     default=0.005,
-    help='tau'
-)
+    help='tau')
 parser.add_argument(
-    'initial_eps',
+    '--initial_eps',
     type=float,
     default=1,
-    help='intial epsilon'
-)
+    help='intial epsilon')
 parser.add_argument(
-    'end_eps',
+    '--end_eps',
     type=float,
     default=0.001,
-    help='end epsilon'
-)
+    help='end epsilon')
 parser.add_argument(
-    'eps_decay_period',
+    '--eps_decay_period',
     type=int,
-    default=25e4
-)
+    default=25e4)
 parser.add_argument(
-    'eval_eps',
+    '--eval_eps',
     type=float,
-    default=0.001
-)
+    default=0.001)
 parser.add_argument(
-    'min_priority',
+    '--min_priority',
     type=float,
-    default=1e-2
-)
+    default=1e-2)
 parser.add_argument(
-    'V_min',
+    '--V_min',
     type=float,
-    default=-10
-)
+    default=0)
 parser.add_argument(
-    'V_max',
+    '--V_max',
     type=float,
-    default=10
-)
+    default=100)
 parser.add_argument(
-    'batch_size',
+    '--batch_size',
     type=int,
-    default=32,
-    help='Batch Size'
-)
+    default=512,
+    help='Batch Size')
 parser.add_argument(
-    'norm_clip',
+    '--norm_clip',
     type=float,
-    default=10
-)
+    default=10)
 parser.add_argument(
-    'atoms',
+    '--atoms',
     type=int,
     default=51,
-    help='Number of atoms for distributional RL'
-)
+    help='Number of atoms for distributional RL')
 parser.add_argument(
-    'hidden_size',
+    '--hidden_size',
     type=int,
-    default=256
-)
+    default=256)
 parser.add_argument(
-    'noisy_std',
-    type=float,
-    default=0.1,
-    help='Standard deviation for noisy layers'
-)
-parser.add_argument(
-    'model',
-    default=None
-)
-parser.add_argument(
-    'history_length',
-    type=int,
-    default=4
-)
-parser.add_argument(
-    'multi_step',
-    type=int,
-    default=1,
-    help='Number of steps for multi step rewards'
-)
-parser.add_argument(
-    'priority_weight',
-    type=float,
-    default=0.4
-)
-parser.add_argument(
-    'priority_exponent',
+    '--noisy_std',
     type=float,
     default=0.5,
-)
+    help='Standard deviation for noisy layers')
 parser.add_argument(
-    't',
+    '--model',
+    default=None)
+parser.add_argument(
+    '--history_length',
     type=int,
-    default=0
-)
+    default=4)
 parser.add_argument(
-    'no_ret_normalization',
-    type=bool,
-    default=False
-)
-parser.add_argument(
-    'eps',
-    type=float,
-    default=1e-05
-)
-parser.add_argument(
-    'alpha',
-    type=float,
-    default=0.99
-)
-parser.add_argument(
-    'arch',
-    default='large'
-)
-parser.add_argument(
-    'clip_param',
-    type=float,
-    default=0.2
-)
-parser.add_argument(
-    'disable_checkpoint',
-    type=bool,
-    default=False
-)
-parser.add_argument(
-    'entropy_coef',
-    type=float,
-    default=0.01
-)
-parser.add_argument(
-    'final_num_test_seeds',
+    '--multi_step',
     type=int,
-    default=1000
-)
+    default=1,
+    help='Number of steps for multi step rewards')
 parser.add_argument(
-    'full_train_distribution',
+    '--priority_weight',
+    type=float,
+    default=0.4)
+parser.add_argument(
+    '--priority_exponent',
+    type=float,
+    default=0.5,)
+parser.add_argument(
+    '--t',
+    type=int,
+    default=0)
+parser.add_argument(
+    '--no_ret_normalization',
     type=bool,
-    default=False
-)
+    default=False)
 parser.add_argument(
-    'gae_lambda',
+    '--eps',
     type=float,
-    default=0.95
-)
+    default=1e-05)
 parser.add_argument(
-    'gamma',
+    '--alpha',
     type=float,
-    default=0.999
-)
+    default=0.99)
+parser.add_argument(
+    '--arch',
+    default='large')
+parser.add_argument(
+    '--clip_param',
+    type=float,
+    default=0.2)
+parser.add_argument(
+    '--disable_checkpoint',
+    type=bool,
+    default=False)
+parser.add_argument(
+    '--entropy_coef',
+    type=float,
+    default=0.01)
+parser.add_argument(
+    '--final_num_test_seeds',
+    type=int,
+    default=1000)
+parser.add_argument(
+    '--full_train_distribution',
+    type=bool,
+    default=False)
+parser.add_argument(
+    '--gae_lambda',
+    type=float,
+    default=0.95)
+parser.add_argument(
+    '--gamma',
+    type=float,
+    default=0.999)
 
 #Environment parameters
 parser.add_argument(
-    'num_processes',
+    '--num_processes',
     type=int,
-    default=1
-)
+    default=64)
 parser.add_argument(
-    'env_name',
-    default='coinrun'
-)
+    '--env_name',
+    default='coinrun')
 parser.add_argument(
-    'distribution_mode',
-    default='easy'
-)
+    '--distribution_mode',
+    default='easy')
 parser.add_argument(
-    'paint_vel_info',
+    '--paint_vel_info',
     type=bool,
-    default=False
-)
+    default=False)
 parser.add_argument(
-    'start_level',
+    '--start_level',
     type=int,
-    default=0
-)
+    default=0)
 parser.add_argument(
-    'render',
+    '--render',
     type=bool,
-    default=False
-)
+    default=False)
 parser.add_argument(
-    'checkpoint_interval',
+    '--checkpoint_interval',
     type=int,
-    default=0
-)
+    default=0)
 parser.add_argument(
-    'memory_capacity',
+    '--memory_capacity',
     type=int,
-    default=int(1e4)
-)
+    default=1e4)
 parser.add_argument(
-    'reward_clip',
+    '--reward_clip',
     type=float,
-    default=1
-)
+    default=1)
 
 #Level Replay parameters
 parser.add_argument(
-    'level_replay_alpha',
+    '--level_replay_alpha',
     type=float,
-    default=1.0
-)
+    default=1.0)
 parser.add_argument(
-    'level_replay_eps',
+    '--level_replay_eps',
     type=float,
-    default=0.05
-)
+    default=0.05)
 parser.add_argument(
-    'level_replay_nu',
+    '--level_replay_nu',
     type=float,
-    default=0.5
-)
+    default=0.5)
 parser.add_argument(
-    'level_replay_rho',
+    '--level_replay_rho',
     type=float,
-    default=1.0
-)
+    default=1.0)
 parser.add_argument(
-    'level_replay_schedule',
-    default='proportionate'
-)
+    '--level_replay_schedule',
+    default='proportionate')
 parser.add_argument(
-    'level_replay_score_transform',
-    default='rank'
-)
+    '--level_replay_score_transform',
+    default='rank')
 parser.add_argument(
-    'level_replay_strategy',
+    '--level_replay_strategy',
     default='value_l1'
 )
 parser.add_argument(
-    'level_replay_temperature',
+    '--level_replay_temperature',
     type=float,
-    default=0.1
-)
+    default=0.1)
 parser.add_argument(
-    'max_grad_norm',
+    '--max_grad_norm',
     type=float,
-    default=0.5
-)
+    default=0.5)
 parser.add_argument(
-    'num_env_steps',
+    '--num_env_steps',
     type=float,
-    default=25000000.0
-)
+    default=25000000.0)
 parser.add_argument(
-    'num_mini_batch',
+    '--num_mini_batch',
     type=int,
-    default=8
-)
+    default=8)
 parser.add_argument(
-    'num_steps',
+    '--num_steps',
     type=int,
-    default=256
-)
+    default=256)
 parser.add_argument(
-    'num_test_seeds',
+    '--num_test_seeds',
     type=int,
-    default=10
-)
+    default=10)
 parser.add_argument(
-    'num_train_seeds',
+    '--num_train_seeds',
     type=int,
-    default=200
-)
+    default=200)
 parser.add_argument(
-    'ppo_epoch',
+    '--ppo_epoch',
     type=int,
-    default=3
-)
+    default=3)
 parser.add_argument(
-    'save_interval',
+    '--save_interval',
     type=int,
-    default=60
-)
+    default=60)
 parser.add_argument(
-    'seed',
+    '--seed',
     type=int,
-    default=1
-)
+    default=1)
 parser.add_argument(
-    'seed_path',
-    default=None
-)
+    '--seed_path',
+    default=None)
 parser.add_argument(
-    'staleness_coef',
+    '--staleness_coef',
     type=float,
-    default=0.1
-)
+    default=0.1)
 parser.add_argument(
-    'staleness_temperature',
+    '--staleness_temperature',
     type=float,
-    default=1.0
-)
+    default=1.0)
 parser.add_argument(
-    'staleness_transform',
-    default='power'
-)
+    '--staleness_transform',
+    default='power')
 parser.add_argument(
-    'value_loss_coef',
+    '--value_loss_coef',
     type=float,
-    default=0.5
-)
+    default=0.5)
 parser.add_argument(
-    'weight_log_interval',
+    '--weight_log_interval',
     type=int,
-    default=1
-)
-parser.add_argument(
-    'num_processes',
-    type=int,
-    default=1
-)
+    default=1)
 
 #Logging
 parser.add_argument(
-    'log_dir',
-    default='~/PLEXR/logs/rainbow/'
-)
+    '--log_dir',
+    default='~/PLEXR/logs/rainbow/')
 parser.add_argument(
-    'log_interval',
+    '--log_interval',
     type=int,
-    default=1
-)
+    default=1)
 parser.add_argument(
-    'xpid',
-    default='latest'
-)
+    '--xpid',
+    default='latest')
 parser.add_argument(
-    'verbose',
+    '--verbose',
     type=bool,
-    default=False
-)
+    default=False)

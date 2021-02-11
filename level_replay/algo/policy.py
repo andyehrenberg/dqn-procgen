@@ -31,7 +31,7 @@ class Rainbow(object):
 
         # Target update rule
         self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
-        self.target_update_frequency = args.target_update_frequency
+        self.target_update_frequency = args.target_update
         self.tau = args.tau
 
         # Decay for eps
@@ -41,8 +41,8 @@ class Rainbow(object):
 
         # Evaluation hyper-parameters
         self.state_shape = (-1,) + args.state_dim
-        self.eval_eps = 0.001
-        self.num_actions = 15
+        self.eval_eps = args.eval_eps
+        self.num_actions = args.num_actions
 
         # Number of training iterations
         self.iterations = 0
@@ -138,7 +138,7 @@ class DDQN(object):
 
         # Target update rule
         self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
-        self.target_update_frequency = args.target_update_frequency
+        self.target_update_frequency = args.target_update
         self.tau = args.tau
 
         # Decay for eps
@@ -148,8 +148,8 @@ class DDQN(object):
 
         # Evaluation hyper-parameters
         self.state_shape = (-1,) + args.state_dim
-        self.eval_eps = 0.001
-        self.num_actions = 15
+        self.eval_eps = args.eval_eps
+        self.num_actions = args.num_actions
 
         # Number of training iterations
         self.iterations = 0

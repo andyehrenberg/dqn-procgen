@@ -26,7 +26,7 @@ from level_replay.envs import make_lr_venv
 from level_replay.dqn_args import parser
 from test import evaluate
 from tqdm import trange
-import wandb
+#import wandb
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -35,8 +35,8 @@ last_checkpoint_time = None
 def train(args, seeds):
     global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
-    device = torch.device("cuda:0" if args.cuda else "cpu")
-    if 'cuda' in device.type:
+    args.device = torch.device("cuda:0" if args.cuda else "cpu")
+    if 'cuda' in args.device.type:
         print('Using CUDA\n')
     args.optimizer_parameters = {'lr': args.learning_rate,  'eps': args.adam_eps}
 
@@ -59,7 +59,7 @@ def train(args, seeds):
     #)
 
     # Configure actor envs
-    wandb.init(project="test", entity="andyehrenberg", config=vars(args))
+    #wandb.init(project="test", entity="andyehrenberg", config=vars(args))
     start_level = 0
 
     num_levels = 1
@@ -95,7 +95,7 @@ def train(args, seeds):
     )
 
     agent = DDQN(args)
-    wandb.watch(agent)
+    #wandb.watch(agent)
 
     #def checkpoint():
     #    if args.disable_checkpoint:
@@ -174,7 +174,7 @@ def train(args, seeds):
         # Train agent after collecting sufficient data
         if  (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss = agent.train(replay_buffer)
-            wandb.log({"Value Loss": loss})
+            #wandb.log({"Value Loss": loss})
             #losses.append(loss)
 
         if t >= args.start_timesteps and t % args.target_update == 0:
@@ -193,8 +193,8 @@ def train(args, seeds):
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             #evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
-            evaluation = eval_policy(agent, seeds, start_level, level_sampler_args, num_levels)
-            wandb.log({"Evaluation Returns": evaluation})
+            evaluation = eval_policy(agent, seeds, start_level, level_sampler_args, args, num_levels)
+            #wandb.log({"Evaluation Returns": evaluation})
             #np.save(f"./results/log.npy", evaluations)
 
 
@@ -207,7 +207,7 @@ def load_seeds(seed_path):
     seeds = open(seed_path).readlines()
     return [int(s) for s in seeds]
 
-def eval_policy(policy, seeds, start_level, level_sampler_args, num_levels, eval_episodes=10):
+def eval_policy(policy, seeds, start_level, level_sampler_args, args, num_levels, eval_episodes=10):
     #seeds = generate_seeds(args.num_train_seeds)
     eval_envs, level_sampler = make_lr_venv(
         num_envs=args.num_processes, env_name=args.env_name,
