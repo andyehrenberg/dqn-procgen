@@ -18,7 +18,7 @@ from baselines.logger import HumanOutputFormat
 from level_replay import utils
 from level_replay.algo.dqn import RainbowDQN, DQN
 from level_replay.algo.policy import Rainbow, DDQN
-from level_replay.algo.buffer import Buffer, PrioritizedBuffer
+from level_replay.algo.buffer import make_buffer
 from level_replay.model import model_for_env_name
 from level_replay.storage import RolloutStorage
 from level_replay.file_writer import FileWriter
@@ -27,6 +27,7 @@ from level_replay.dqn_args import parser
 from test import evaluate
 from tqdm import trange
 #import wandb
+#wandb.init(project="test", entity="Andy")
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -60,6 +61,7 @@ def train(args, seeds):
 
     # Configure actor envs
     #wandb.init(project="test", entity="andyehrenberg", config=vars(args))
+
     start_level = 0
 
     num_levels = 1
@@ -86,29 +88,25 @@ def train(args, seeds):
         paint_vel_info=args.paint_vel_info,
         level_sampler_args=level_sampler_args)
 
-    prioritized = False#True
-    replay_buffer = Buffer(
-        args.state_dim,
-        args.batch_size,
-        args.memory_capacity,
-        args.device, prioritized
-    )
+    replay_buffer = make_buffer(args)
 
     agent = DDQN(args)
     #wandb.watch(agent)
 
-    #def checkpoint():
-    #    if args.disable_checkpoint:
-    #        return
-    #    logging.info("Saving checkpoint to %s", checkpointpath)
-    #    torch.save(
-    #        {
-    #            "model_state_dict": model.online_net.state_dict(),
-    #            #"optimizer_state_dict": agent.optimizer.state_dict(),
-    #            "args": vars(args),
-    #        },
-    #        checkpointpath,
-    #    )
+    '''
+    def checkpoint():
+        if args.disable_checkpoint:
+            return
+        logging.info("Saving checkpoint to %s", checkpointpath)
+        torch.save(
+            {
+                "model_state_dict": model.online_net.state_dict(),
+                #"optimizer_state_dict": agent.optimizer.state_dict(),
+                "args": vars(args),
+            },
+            checkpointpath,
+        )
+    '''
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -136,15 +134,13 @@ def train(args, seeds):
     for t in trange(int(args.T_max)):
         episode_timesteps += 1
 
-        #if args.train_behavioral:
-        if t < args.start_timesteps or np.random.uniform() < 0.01:
+        if t < args.start_timesteps or np.random.uniform() < 0.05:
             action = torch.LongTensor([envs.action_space.sample()]).reshape(-1, 1)
         else:
             action, _ = agent.select_action(state)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
-        #print(action, reward, done, infos)
         #state_deque.append(state)
         #reward_deque.append(reward)
         #action_deque.append(action)
@@ -153,7 +149,7 @@ def train(args, seeds):
             #n_reward = multi_step_reward(reward_deque, args.gamma)
             #n_state = state_deque[0]
             #n_action = action_deque[0]
-        replay_buffer.add(state, action, next_state, reward, np.float32(done), done, episode_start)
+        replay_buffer.add(state, action, next_state, reward, np.float32(done), infos)
 
         state = next_state
         episode_start = False
@@ -167,72 +163,72 @@ def train(args, seeds):
                 print("Bad transition")
             #print(info)
             if 'episode' in info.keys():
-                episode_rewards.append(info['episode']['r'])
+                episode_reward = info['episode']['r']
+                episode_rewards.append(episode_reward)
+                #wandb.log({"Episode rewards": episode_reward})
             if level_sampler:
                 level_seeds[i] = info['level_seed']
 
         # Train agent after collecting sufficient data
         if  (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            loss = agent.train(replay_buffer)
+            loss, grad_magnitude = agent.train(replay_buffer)
             #wandb.log({"Value Loss": loss})
             #losses.append(loss)
 
-        if t >= args.start_timesteps and t % args.target_update == 0:
-            agent.copy_target_update()
-
-        if done:
-            # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            #print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward}")
-            # Reset environment
-            state, level_seeds = envs.reset()
-            done = False
-            episode_start = True
-            episode_reward = 0
-            episode_timesteps = 0
-            episode_num += 1
-
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             #evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
-            evaluation = eval_policy(agent, seeds, start_level, level_sampler_args, args, num_levels)
-            #wandb.log({"Evaluation Returns": evaluation})
+            test_evaluation = eval_policy(args, agent, args.num_test_seeds)
+            train_evaluation = eval_policy(args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds)
+            #wandb.log({"Test Evaluation Returns": test_evaluation})
+            #wandb.log({"Train Evaluation Returns": train_evaluation})
             #np.save(f"./results/log.npy", evaluations)
-
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
-
 
 def load_seeds(seed_path):
     seed_path = os.path.expandvars(os.path.expanduser(seed_path))
     seeds = open(seed_path).readlines()
     return [int(s) for s in seeds]
 
-def eval_policy(policy, seeds, start_level, level_sampler_args, args, num_levels, eval_episodes=10):
-    #seeds = generate_seeds(args.num_train_seeds)
+def eval_policy(args, policy, num_episodes, num_processes=1, deterministic=False,
+    start_level=0, num_levels=0, seeds=None, level_sampler=None, progressbar=None):
+    if level_sampler:
+        start_level = level_sampler.seed_range()[0]
+        num_levels = 1
+
     eval_envs, level_sampler = make_lr_venv(
-        num_envs=args.num_processes, env_name=args.env_name,
+        num_envs=num_processes, env_name=args.env_name,
         seeds=seeds, device=args.device,
         num_levels=num_levels, start_level=start_level,
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
-        level_sampler_args=level_sampler_args)
+        level_sampler=level_sampler)
 
-    avg_reward = 0.
-    for _ in range(eval_episodes):
-        state, level_seeds = eval_envs.reset()
-        done = False
-        while not done:
+    eval_episode_rewards = []
+    if level_sampler:
+        state, _ = eval_envs.reset()
+    else:
+        state = eval_envs.reset()
+    while len(eval_episode_rewards) < num_episodes:
+        with torch.no_grad():
             action, q = policy.select_action(state, eval=True)
-            state, _, done, infos = eval_envs.step(action)
-            for info in infos:
-                if 'episode' in info.keys():
-                    avg_reward += info['episode']['r']
+        state, _, done, infos = eval_envs.step(action)
+        for info in infos:
+            if 'episode' in info.keys():
+                eval_episode_rewards.append(info['episode']['r'])
+                if progressbar:
+                    progressbar.update(1)
 
-    avg_reward /= eval_episodes
+    eval_envs.close()
+    if progressbar:
+        progressbar.close()
+
+    avg_reward = sum(eval_episode_rewards)/len(eval_episode_rewards)
 
     print("---------------------------------------")
-    print(f"Evaluation over {eval_episodes} episodes: {avg_reward}")
+    print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
     print("---------------------------------------")
     return avg_reward
 
@@ -241,7 +237,6 @@ def multi_step_reward(rewards, gamma):
     for idx, reward in enumerate(rewards):
         ret += reward * (gamma ** idx)
     return ret
-
 
 if __name__ == "__main__":
     args = parser.parse_args()

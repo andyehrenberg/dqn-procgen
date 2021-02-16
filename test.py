@@ -26,19 +26,19 @@ from level_replay.envs import make_lr_venv
 
 
 def evaluate(
-    args, 
-    actor_critic, 
-    num_episodes, 
-    device, 
-    num_processes=1, 
+    args,
+    actor_critic,
+    num_episodes,
+    device,
+    num_processes=1,
     deterministic=False,
     start_level=0,
     num_levels=0,
     seeds=None,
-    level_sampler=None, 
+    level_sampler=None,
     progressbar=None):
     actor_critic.eval()
-        
+
     if level_sampler:
         start_level = level_sampler.seed_range()[0]
         num_levels = 1
@@ -71,7 +71,7 @@ def evaluate(
                 deterministic=deterministic)
 
         obs, _, done, infos = eval_envs.step(action)
-         
+
         eval_masks = torch.tensor(
             [[0.0] if done_ else [1.0] for done_ in done],
             dtype=torch.float32,
@@ -98,11 +98,11 @@ def evaluate(
 def evaluate_saved_model(
     args,
     result_dir,
-    xpid, 
-    num_episodes=10, 
-    seeds=None, 
-    deterministic=False, 
-    verbose=False, 
+    xpid,
+    num_episodes=10,
+    seeds=None,
+    deterministic=False,
+    verbose=False,
     progressbar=False,
     num_processes=1):
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -135,7 +135,7 @@ def evaluate_saved_model(
         paint_vel_info=args.paint_vel_info)
 
     level_sampler = LevelSampler(
-        seeds, 
+        seeds,
         dummy_env.observation_space, dummy_env.action_space,
         strategy='sequential')
 
@@ -155,10 +155,10 @@ def evaluate_saved_model(
 
     num_processes = min(num_processes, num_episodes)
     eval_episode_rewards = \
-        evaluate(args, model, num_episodes, 
-            device=device, 
-            num_processes=num_processes, 
-            level_sampler=level_sampler, 
+        evaluate(args, model, num_episodes,
+            device=device,
+            num_processes=num_processes,
+            level_sampler=level_sampler,
             progressbar=pbar)
 
     mean_return = np.mean(eval_episode_rewards)

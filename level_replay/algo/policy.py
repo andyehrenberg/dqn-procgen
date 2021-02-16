@@ -102,7 +102,7 @@ class Rainbow(object):
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
-           target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
@@ -161,41 +161,41 @@ class DDQN(object):
             return action, None
 
     def train(self, replay_buffer):
-        state, action, next_state, reward, done, ind, weights = replay_buffer.sample()
+        state, action, next_state, reward, done, seeds, ind, weights = replay_buffer.sample()
 
-        next_Q = self.Q(next_state)
-        #print('Next Q: ', next_Q)
-        next_action = next_Q.argmax(1).reshape(-1, 1)
-        #print('Next Action: ', next_action)
-        target_Q = self.Q_target(next_state)
-        #print('Target Q: ', target_Q)
-        target_Q_at_a = target_Q.gather(1, next_action)
-        #print('Target Q at a: ', target_Q_at_a)
-        current_Q_at_a = self.Q(state).gather(1, action)
-        #Huber loss
-        loss = F.smooth_l1_loss(current_Q_at_a, reward + self.gamma*target_Q_at_a, reduction='none')
-        #print('Loss vector: ', loss)
+        with torch.no_grad():
+            next_Q = self.Q(next_state)
+            next_action = next_Q.argmax(1).reshape(-1, 1)
+            target_Q = self.Q_target(next_state)
+            target_Q = reward + done*self.gamma*target_Q.gather(1, next_action)
 
-        self.Q.zero_grad()
-        mean_loss = (weights*loss).mean()
-        mean_loss.backward()  # Backpropagate importance-weighted minibatch loss
-        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        current_Q = self.Q(state).gather(1, action)
+        #td_loss = (current_Q - target_Q).abs()
+		#loss = self.huber(td_loss)
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction='none')).mean()
+
+        self.Q_optimizer.zero_grad()
+        loss.backward()  # Backpropagate importance-weighted minibatch loss
+        grad_magnitude = self.Q.fc_h_a.weight.grad.clone().norm()
+        #clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
 
         # Update target network by polyak or full copy every X iterations.
         self.iterations += 1
         self.maybe_update_target()
 
-        priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
+        priority = ((current_Q - target_Q).abs() + 1e-10).pow(0.6).cpu().data.numpy().flatten()
+        #priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
-        return mean_loss
+
+        return loss, grad_magnitude
 
     def huber(self, x):
         return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
-           target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:

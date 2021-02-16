@@ -1,5 +1,5 @@
 # Copyright (c) 2017 Ilya Kostrikov
-# 
+#
 # Licensed under the MIT License;
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -15,11 +15,11 @@ import torch
 
 parser = argparse.ArgumentParser(description='RL')
 
-# PPO Arguments. 
+# PPO Arguments.
 parser.add_argument(
-    '--lr', 
-    type=float, 
-    default=5e-4, 
+    '--lr',
+    type=float,
+    default=5e-4,
     help='learning rate')
 parser.add_argument(
     '--eps',
@@ -61,9 +61,9 @@ parser.add_argument(
     action='store_true',
     help='Whether to use unnormalized returns')
 parser.add_argument(
-    '--seed', 
-    type=int, 
-    default=1, 
+    '--seed',
+    type=int,
+    default=1,
     help='random seed')
 parser.add_argument(
     '--num_processes',
@@ -145,12 +145,12 @@ parser.add_argument(
     default=0,
     help='start level id for sampling Procgen levels')
 parser.add_argument(
-    "--num_test_seeds", 
+    "--num_test_seeds",
     type=int,
     default=10,
     help="Number of test seeds")
 parser.add_argument(
-    "--final_num_test_seeds", 
+    "--final_num_test_seeds",
     type=int,
     default=1000,
     help="Number of test seeds")
@@ -167,23 +167,23 @@ parser.add_argument(
 # Level Replay arguments.
 parser.add_argument(
     "--level_replay_score_transform",
-    type=str, 
-    default='softmax', 
-    choices=['constant', 'max', 'eps_greedy', 'rank', 'power', 'softmax'], 
+    type=str,
+    default='softmax',
+    choices=['constant', 'max', 'eps_greedy', 'rank', 'power', 'softmax'],
     help="Level replay scoring strategy")
 parser.add_argument(
-    "--level_replay_temperature", 
+    "--level_replay_temperature",
     type=float,
     default=1.0,
     help="Level replay scoring strategy")
 parser.add_argument(
-    "--level_replay_strategy", 
+    "--level_replay_strategy",
     type=str,
     default='random',
     choices=['off', 'random', 'sequential', 'policy_entropy', 'least_confidence', 'min_margin', 'gae', 'value_l1', 'one_step_td_error'],
     help="Level replay scoring strategy")
 parser.add_argument(
-    "--level_replay_eps", 
+    "--level_replay_eps",
     type=float,
     default=0.05,
     help="Level replay epsilon for eps-greedy sampling")
@@ -194,39 +194,39 @@ parser.add_argument(
     help="Level replay schedule for sampling seen levels")
 parser.add_argument(
     "--level_replay_rho",
-    type=float, 
+    type=float,
     default=1.0,
     help="Minimum size of replay set relative to total number of levels before sampling replays.")
 parser.add_argument(
-    "--level_replay_nu", 
+    "--level_replay_nu",
     type=float,
     default=0.5,
     help="Probability of sampling a new level instead of a replay level.")
 parser.add_argument(
     "--level_replay_alpha",
-    type=float, 
+    type=float,
     default=1.0,
     help="Level score EWA smoothing factor")
 parser.add_argument(
     "--staleness_coef",
-    type=float, 
+    type=float,
     default=0.0,
     help="Staleness weighing")
 parser.add_argument(
     "--staleness_transform",
-    type=str, 
+    type=str,
     default='power',
-    choices=['max', 'eps_greedy', 'rank', 'power', 'softmax'], 
+    choices=['max', 'eps_greedy', 'rank', 'power', 'softmax'],
     help="Staleness normalization transform")
 parser.add_argument(
     "--staleness_temperature",
-    type=float, 
+    type=float,
     default=1.0,
     help="Staleness normalization temperature")
 
 # Logging arguments
 parser.add_argument(
-    "--verbose", 
+    "--verbose",
     action="store_true",
     help="Whether to print logs")
 parser.add_argument(
@@ -235,16 +235,16 @@ parser.add_argument(
     default=1,
     help='log interval, one log per n updates')
 parser.add_argument(
-    "--save_interval", 
-    type=int, 
+    "--save_interval",
+    type=int,
     default=60,
     help="Save model every this many minutes.")
 parser.add_argument(
-    "--weight_log_interval", 
-    type=int, 
+    "--weight_log_interval",
+    type=int,
     default=1,
     help="Save level weights every this many updates")
 parser.add_argument(
-    "--disable_checkpoint", 
+    "--disable_checkpoint",
     action="store_true",
     help="Disable saving checkpoint.")

@@ -108,7 +108,7 @@ class VecPyTorchProcgen(VecEnvWrapper):
 
         self.observation_space = Box(
             self.observation_space.low[0, 0, 0],
-            self.observation_space.high[0, 0, 0], 
+            self.observation_space.high[0, 0, 0],
             [3, 64, 64],
             dtype=self.observation_space.dtype)
 
@@ -198,7 +198,7 @@ class VecPyTorchMinigrid(VecEnvWrapper):
         m, n, c = venv.observation_space.shape
         self.observation_space = Box(
             self.observation_space.low[0, 0, 0],
-            self.observation_space.high[0, 0, 0], 
+            self.observation_space.high[0, 0, 0],
             [c, m, n],
             dtype=self.observation_space.dtype)
 
@@ -298,7 +298,7 @@ def make_lr_venv(num_envs, env_name, seeds, device, **kwargs):
 
         if level_sampler_args:
             level_sampler = LevelSampler(
-                seeds, 
+                seeds,
                 venv.observation_space, venv.action_space,
                 **level_sampler_args)
 
@@ -311,7 +311,7 @@ def make_lr_venv(num_envs, env_name, seeds, device, **kwargs):
 
         if level_sampler_args:
             level_sampler = LevelSampler(
-                seeds, 
+                seeds,
                 venv.observation_space, venv.action_space,
                 **level_sampler_args)
 

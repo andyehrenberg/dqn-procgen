@@ -15,16 +15,41 @@ class AbstractBuffer():
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
         self.not_done = np.zeros((self.max_size, 1))
+        self.seeds = np.zeros(self.max_size)
 
-    def add(self, state, action, next_state, reward, done, env_done, first_timestep):
-        self.state[self.ptr] = state
-        self.action[self.ptr] = action
-        self.next_state[self.ptr] = next_state
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = 1. - done
+    def add(self, state, action, next_state, reward, done, infos):
+        n_transitions = state.shape[0]
+        end = (self.ptr + n_transitions) % self.max_size
+        seeds = [i['level_seed'] for i in infos]
+        if self.ptr + n_transitions > self.max_size:
+            self.state[self.ptr:] = state[:n_transitions - end]
+            self.state[:end] = state[n_transitions - end:]
 
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
+            self.action[self.ptr:] = action[:n_transitions - end]
+            self.action[:end] = action[n_transitions - end:]
+
+            self.next_state[self.ptr:] = next_state[:n_transitions - end]
+            self.next_state[:end] = next_state[n_transitions - end:]
+
+            self.reward[self.ptr:] = reward[:n_transitions - end]
+            self.reward[:end] = reward[n_transitions - end:]
+
+            not_done = (1. - done).reshape(-1, 1)
+            self.not_done[self.ptr:] = not_done[:n_transitions - end]
+            self.not_done[:end] = not_done[n_transitions - end:]
+
+            self.seeds[self.ptr:] = seeds[:n_transitions - end]
+            self.seeds[:end] = seeds[n_transitions - end:]
+        else:
+            self.state[self.ptr:self.ptr+n_transitions] = state
+            self.action[self.ptr:self.ptr+n_transitions] = action
+            self.next_state[self.ptr:self.ptr+n_transitions] = next_state
+            self.reward[self.ptr:self.ptr+n_transitions] = reward
+            self.not_done[self.ptr:self.ptr+n_transitions] = (1. - done).reshape(-1, 1)
+            self.seeds[self.ptr:self.ptr+n_transitions] = seeds
+
+        self.ptr = end
+        self.size = min(self.size + n_transitions, self.max_size)
 
     def sample(self):
         pass
@@ -32,9 +57,9 @@ class AbstractBuffer():
     def update_priority(self, ind, priority):
         pass
 
-
+'''
 class Buffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized = None):
+    def __init__(self, state_dim, batch_size, buffer_size, device):
         super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
 
     def sample(self):
@@ -45,17 +70,18 @@ class Buffer(AbstractBuffer):
             torch.LongTensor(self.action[ind]).to(self.device),
             torch.FloatTensor(self.next_state[ind]).to(self.device),
             torch.FloatTensor(self.reward[ind]).to(self.device),
-            torch.FloatTensor(self.not_done[ind]).to(self.device)
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device)
         )
 
         batch += (ind, torch.FloatTensor([1]).to(self.device))
 
         return batch
+'''
 
-
-class PrioritizedBuffer():
+class Buffer(AbstractBuffer):
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized):
-        super(PrioritizedBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
+        super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
 
         if self.prioritized:
@@ -63,17 +89,40 @@ class PrioritizedBuffer():
             self.max_priority = 1.0
             self.beta = 0.4
 
-    def add(self, state, action, next_state, reward, done, env_done, first_timestep):
-        self.state[self.ptr] = state
-        self.action[self.ptr] = action
-        self.next_state[self.ptr] = next_state
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = 1. - done
+    def add(self, state, action, next_state, reward, done, infos):
+        n_transitions = state.shape[0]
+        end = (self.ptr + n_transitions) % self.max_size
+        seeds = [i['level_seed'] for i in infos]
+        if self.ptr + n_transitions > self.max_size:
+            self.state[self.ptr:] = state[:n_transitions - end]
+            self.state[:end] = state[n_transitions - end:]
+
+            self.action[self.ptr:] = action[:n_transitions - end]
+            self.action[:end] = action[n_transitions - end:]
+
+            self.next_state[self.ptr:] = next_state[:n_transitions - end]
+            self.next_state[:end] = next_state[n_transitions - end:]
+
+            self.reward[self.ptr:] = reward[:n_transitions - end]
+            self.reward[:end] = reward[n_transitions - end:]
+
+            not_done = (1. - done).reshape(-1, 1)
+            self.not_done[self.ptr:] = not_done[:n_transitions - end]
+            self.not_done[:end] = not_done[n_transitions - end:]
+            self.seeds[self.ptr:] = seeds[:n_transitions - end]
+            self.seeds[:end] = seeds[n_transitions - end:]
+        else:
+            self.state[self.ptr:self.ptr+n_transitions] = state
+            self.action[self.ptr:self.ptr+n_transitions] = action
+            self.next_state[self.ptr:self.ptr+n_transitions] = next_state
+            self.reward[self.ptr:self.ptr+n_transitions] = reward
+            self.not_done[self.ptr:self.ptr+n_transitions] = (1. - done).reshape(-1, 1)
+            self.seeds[self.ptr:self.ptr+n_transitions] = seeds
 
         if self.prioritized:
             self.tree.set(self.ptr, self.max_priority)
 
-        self.ptr = (self.ptr + 1) % self.max_size
+        self.ptr = end
         self.size = min(self.size + 1, self.max_size)
 
     def sample(self):
@@ -85,7 +134,8 @@ class PrioritizedBuffer():
             torch.LongTensor(self.action[ind]).to(self.device),
             torch.FloatTensor(self.next_state[ind]).to(self.device),
             torch.FloatTensor(self.reward[ind]).to(self.device),
-            torch.FloatTensor(self.not_done[ind]).to(self.device)
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device)
         )
 
         if self.prioritized:
@@ -99,8 +149,11 @@ class PrioritizedBuffer():
         return batch
 
     def update_priority(self, ind, priority):
-        self.max_priority = max(priority.max(), self.max_priority)
-        self.tree.batch_set(ind, priority)
+        if self.prioritized:
+            self.max_priority = max(priority.max(), self.max_priority)
+            self.tree.batch_set(ind, priority)
+        else:
+            pass
 
 
 class SumTree(object):
@@ -152,3 +205,13 @@ class SumTree(object):
         for nodes in self.nodes[::-1]:
             np.add.at(nodes, node_index, priority_diff)
             node_index //= 2
+
+def make_buffer(args):
+    replay_buffer = Buffer(
+        args.state_dim,
+        args.batch_size,
+        args.memory_capacity,
+        args.device,
+        args.PER
+    )
+    return replay_buffer

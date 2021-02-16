@@ -198,6 +198,11 @@ parser.add_argument(
     '--gamma',
     type=float,
     default=0.999)
+parser.add_argument(
+    '--PER',
+    type=bool,
+    default=False,
+    help='Whether to use PER')
 
 #Environment parameters
 parser.add_argument(
