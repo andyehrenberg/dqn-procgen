@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser(description='DQN')
 parser.add_argument(
     '--start_timesteps',
     type=int,
-    default=20000,#1000
+    default=20000,
     help='Timesteps until using DQN to take actions')
 parser.add_argument(
     '--train_freq',
@@ -22,7 +22,7 @@ parser.add_argument(
 parser.add_argument(
     '--T_max',
     type=int,
-    default=50e6
+    default=50e6,
     help='Total environment steps')
 parser.add_argument(
     '--max_episode_length',
