@@ -7,22 +7,22 @@ parser = argparse.ArgumentParser(description='DQN')
 parser.add_argument(
     '--start_timesteps',
     type=int,
-    default=1000,#1000
+    default=20000,#1000
     help='Timesteps until using DQN to take actions')
 parser.add_argument(
     '--train_freq',
     type=int,
-    default=4,
+    default=64,
     help='Number of environment steps between DQN updates')
 parser.add_argument(
     '--eval_freq',
     type=int,
-    default=300,
+    default=500,
     help='Evaluation frequency')
 parser.add_argument(
     '--T_max',
     type=int,
-    default=5e3,#int(50e4)
+    default=50e6
     help='Total environment steps')
 parser.add_argument(
     '--max_episode_length',
@@ -71,7 +71,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=1e3,#int(8e3)
+    default=8e3
     help='How often to update target network')
 parser.add_argument(
     '--tau',
@@ -234,7 +234,7 @@ parser.add_argument(
 parser.add_argument(
     '--memory_capacity',
     type=int,
-    default=1e4)
+    default=1e6)
 parser.add_argument(
     '--reward_clip',
     type=float,
