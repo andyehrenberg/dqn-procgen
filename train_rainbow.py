@@ -131,7 +131,7 @@ def train(args, seeds):
     #losses = []
     for t in trange(int(args.T_max)):
         if t < args.start_timesteps or np.random.uniform() < 0.05:
-            action = torch.LongTensor([envs.action_space.sample() _ in range(args.num_processes)]).reshape(-1, 1)
+            action = torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1)
         else:
             action, _ = agent.select_action(state)
 
