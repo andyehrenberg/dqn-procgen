@@ -27,7 +27,6 @@ from level_replay.dqn_args import parser
 from test import evaluate
 from tqdm import trange
 #import wandb
-#wandb.init(project="test", entity="Andy")
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -113,12 +112,11 @@ def train(args, seeds):
         state, level_seeds = envs.reset()
     else:
         state = envs.reset()
-    level_seeds.unsqueeze(-1)
+    level_seeds = level_seeds.unsqueeze(-1)
     episode_rewards = deque(maxlen=10)
 
     episode_start = True
     episode_reward = 0
-    episode_timesteps = 0
     episode_num = 0
 
     #state_deque = deque(maxlen=args.multi_step)
@@ -132,10 +130,8 @@ def train(args, seeds):
 
     #losses = []
     for t in trange(int(args.T_max)):
-        episode_timesteps += 1
-
         if t < args.start_timesteps or np.random.uniform() < 0.05:
-            action = torch.LongTensor([envs.action_space.sample()]).reshape(-1, 1)
+            action = torch.LongTensor([envs.action_space.sample() _ in range(args.num_processes)]).reshape(-1, 1)
         else:
             action, _ = agent.select_action(state)
 
@@ -145,42 +141,38 @@ def train(args, seeds):
         #reward_deque.append(reward)
         #action_deque.append(action)
 
-        #if done:#len(state_deque) == args.multi_step or done:
+        #if len(state_deque) == args.multi_step or done:
             #n_reward = multi_step_reward(reward_deque, args.gamma)
             #n_state = state_deque[0]
             #n_action = action_deque[0]
-        replay_buffer.add(state, action, next_state, reward, np.float32(done), infos)
-
-        state = next_state
-        episode_start = False
-
-        # Only consider "done" if episode terminates due to failure condition
-        #done_float = float(done) if episode_timesteps < envs._max_episode_steps else 0
 
         # For atari, info[0] = clipped reward, info[1] = done_float
         for i, info in enumerate(infos):
             if 'bad_transition' in info.keys():
                 print("Bad transition")
-            #print(info)
             if 'episode' in info.keys():
                 episode_reward = info['episode']['r']
                 episode_rewards.append(episode_reward)
                 #wandb.log({"Episode rewards": episode_reward})
             if level_sampler:
-                level_seeds[i] = info['level_seed']
+                level_seeds[i][0] = info['level_seed']
+
+        replay_buffer.add(state, action, next_state, reward, np.float32(done), level_seeds)
+
+        state = next_state
+        episode_start = False
 
         # Train agent after collecting sufficient data
         if  (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
-            #wandb.log({"Value Loss": loss})
+            #wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude})
             #losses.append(loss)
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             #evaluations.append(eval_policy(agent, seeds, start_level, level_sampler_args, num_levels))
             test_evaluation = eval_policy(args, agent, args.num_test_seeds)
             train_evaluation = eval_policy(args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds)
-            #wandb.log({"Test Evaluation Returns": test_evaluation})
-            #wandb.log({"Train Evaluation Returns": train_evaluation})
+            #wandb.log({"Test Evaluation Returns": test_evaluation, "Train Evaluation Returns": train_evaluation})
             #np.save(f"./results/log.npy", evaluations)
 
 def generate_seeds(num_seeds, base_seed=0):

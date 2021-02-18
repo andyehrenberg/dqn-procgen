@@ -15,12 +15,11 @@ class AbstractBuffer():
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
         self.not_done = np.zeros((self.max_size, 1))
-        self.seeds = np.zeros(self.max_size)
+        self.seeds = np.zeros((self.max_size, 1))
 
-    def add(self, state, action, next_state, reward, done, infos):
+    def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0]
         end = (self.ptr + n_transitions) % self.max_size
-        seeds = [i['level_seed'] for i in infos]
         if self.ptr + n_transitions > self.max_size:
             self.state[self.ptr:] = state[:n_transitions - end]
             self.state[:end] = state[n_transitions - end:]
@@ -89,10 +88,9 @@ class Buffer(AbstractBuffer):
             self.max_priority = 1.0
             self.beta = 0.4
 
-    def add(self, state, action, next_state, reward, done, infos):
+    def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0]
         end = (self.ptr + n_transitions) % self.max_size
-        seeds = [i['level_seed'] for i in infos]
         if self.ptr + n_transitions > self.max_size:
             self.state[self.ptr:] = state[:n_transitions - end]
             self.state[:end] = state[n_transitions - end:]

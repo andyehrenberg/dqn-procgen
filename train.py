@@ -154,7 +154,6 @@ def train(args, seeds):
             for i, info in enumerate(infos):
                 if 'episode' in info.keys():
                     episode_rewards.append(info['episode']['r'])
-
                 if level_sampler:
                     level_seeds[i][0] = info['level_seed']
 
