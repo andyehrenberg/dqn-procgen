@@ -71,7 +71,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=8e3
+    default=8e3,
     help='How often to update target network')
 parser.add_argument(
     '--tau',
