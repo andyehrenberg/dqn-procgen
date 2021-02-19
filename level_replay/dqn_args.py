@@ -332,8 +332,13 @@ parser.add_argument(
 
 #Logging
 parser.add_argument(
+    '--wandb',
+    type=bool,
+    default=False,
+    help='Whether to log with wandb or save results locally')
+parser.add_argument(
     '--log_dir',
-    default='~/PLEXR/logs/rainbow/')
+    default='~/PLEXR/logs/')
 parser.add_argument(
     '--log_interval',
     type=int,
