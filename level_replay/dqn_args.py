@@ -234,7 +234,7 @@ parser.add_argument(
 parser.add_argument(
     '--memory_capacity',
     type=int,
-    default=1e6)
+    default=1e5)
 parser.add_argument(
     '--reward_clip',
     type=float,
@@ -334,7 +334,7 @@ parser.add_argument(
 parser.add_argument(
     '--wandb',
     type=bool,
-    default=False,
+    default=True,
     help='Whether to log with wandb or save results locally')
 parser.add_argument(
     '--log_dir',

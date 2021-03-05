@@ -24,7 +24,6 @@ from level_replay.storage import RolloutStorage
 from level_replay.file_writer import FileWriter
 from level_replay.envs import make_lr_venv
 from level_replay.dqn_args import parser
-from test import evaluate
 from tqdm import trange
 import wandb
 
