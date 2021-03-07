@@ -90,9 +90,6 @@ def train(args, seeds):
     replay_buffer = make_buffer(args)
 
     agent = DDQN(args)
-    if args.wandb:
-        wandb.watch(agent)
-
     '''
     def checkpoint():
         if args.disable_checkpoint:
