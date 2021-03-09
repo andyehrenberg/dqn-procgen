@@ -18,37 +18,7 @@ class AbstractBuffer():
         self.seeds = np.zeros((self.max_size, 1))
 
     def add(self, state, action, next_state, reward, done, seeds):
-        n_transitions = state.shape[0]
-        end = (self.ptr + n_transitions) % self.max_size
-        if self.ptr + n_transitions > self.max_size:
-            self.state[self.ptr:] = state[:n_transitions - end]
-            self.state[:end] = state[n_transitions - end:]
-
-            self.action[self.ptr:] = action[:n_transitions - end]
-            self.action[:end] = action[n_transitions - end:]
-
-            self.next_state[self.ptr:] = next_state[:n_transitions - end]
-            self.next_state[:end] = next_state[n_transitions - end:]
-
-            self.reward[self.ptr:] = reward[:n_transitions - end]
-            self.reward[:end] = reward[n_transitions - end:]
-
-            not_done = (1. - done).reshape(-1, 1)
-            self.not_done[self.ptr:] = not_done[:n_transitions - end]
-            self.not_done[:end] = not_done[n_transitions - end:]
-
-            self.seeds[self.ptr:] = seeds[:n_transitions - end]
-            self.seeds[:end] = seeds[n_transitions - end:]
-        else:
-            self.state[self.ptr:self.ptr+n_transitions] = state
-            self.action[self.ptr:self.ptr+n_transitions] = action
-            self.next_state[self.ptr:self.ptr+n_transitions] = next_state
-            self.reward[self.ptr:self.ptr+n_transitions] = reward
-            self.not_done[self.ptr:self.ptr+n_transitions] = (1. - done).reshape(-1, 1)
-            self.seeds[self.ptr:self.ptr+n_transitions] = seeds
-
-        self.ptr = end
-        self.size = min(self.size + n_transitions, self.max_size)
+        pass
 
     def sample(self):
         pass
@@ -91,6 +61,13 @@ class Buffer(AbstractBuffer):
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0]
         end = (self.ptr + n_transitions) % self.max_size
+        if 'cuda' in self.device.type:
+            state = state.cpu()
+            action = action.cpu()
+            next_state = next_state.cpu()
+            reward = reward.cpu()
+            done = done.cpu()
+            seeds = seeds.cpu()
         if self.ptr + n_transitions > self.max_size:
             self.state[self.ptr:] = state[:n_transitions - end]
             self.state[:end] = state[n_transitions - end:]
