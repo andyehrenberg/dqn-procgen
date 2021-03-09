@@ -66,8 +66,10 @@ class Buffer(AbstractBuffer):
             action = action.cpu()
             next_state = next_state.cpu()
             reward = reward.cpu()
-            done = done.cpu()
-            seeds = seeds.cpu()
+            try:
+                seeds = seeds.cpu()
+            except:
+                pass
         if self.ptr + n_transitions > self.max_size:
             self.state[self.ptr:] = state[:n_transitions - end]
             self.state[:end] = state[n_transitions - end:]
