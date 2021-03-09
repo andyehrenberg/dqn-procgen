@@ -47,9 +47,9 @@ parser.add_argument(
     default= (3, 64, 64))
 parser.add_argument(
     '--no_cuda',
-    type=bool,
-    default=True,
-    help='Whether to use GPU')
+    action='store_true',
+    default = False,
+    help='disables gpu')
 parser.add_argument(
     '--discount',
     type=float,
@@ -65,7 +65,7 @@ parser.add_argument(
     help='Optimizer to use')
 parser.add_argument(
     '--polyak_target_update',
-    type=bool,
+    action='store_true',
     default=False,
     help='Whether to use polyak update to target network')
 parser.add_argument(
@@ -157,7 +157,7 @@ parser.add_argument(
     default=0)
 parser.add_argument(
     '--no_ret_normalization',
-    type=bool,
+    action='store_true',
     default=False)
 parser.add_argument(
     '--eps',
@@ -176,7 +176,7 @@ parser.add_argument(
     default=0.2)
 parser.add_argument(
     '--disable_checkpoint',
-    type=bool,
+    action='store_true',
     default=False)
 parser.add_argument(
     '--entropy_coef',
@@ -188,7 +188,7 @@ parser.add_argument(
     default=1000)
 parser.add_argument(
     '--full_train_distribution',
-    type=bool,
+    action='store_true',
     default=False)
 parser.add_argument(
     '--gae_lambda',
@@ -200,7 +200,7 @@ parser.add_argument(
     default=0.999)
 parser.add_argument(
     '--PER',
-    type=bool,
+    action='store_true',
     default=False,
     help='Whether to use PER')
 
@@ -217,7 +217,7 @@ parser.add_argument(
     default='easy')
 parser.add_argument(
     '--paint_vel_info',
-    type=bool,
+    action='store_true',
     default=False)
 parser.add_argument(
     '--start_level',
@@ -225,7 +225,7 @@ parser.add_argument(
     default=0)
 parser.add_argument(
     '--render',
-    type=bool,
+    action='store_true',
     default=False)
 parser.add_argument(
     '--checkpoint_interval',
@@ -333,8 +333,7 @@ parser.add_argument(
 #Logging
 parser.add_argument(
     '--wandb',
-    type=bool,
-    default=True,
+    action='store_true',
     help='Whether to log with wandb or save results locally')
 parser.add_argument(
     '--log_dir',
@@ -348,5 +347,5 @@ parser.add_argument(
     default='latest')
 parser.add_argument(
     '--verbose',
-    type=bool,
+    action='store_true',
     default=False)
