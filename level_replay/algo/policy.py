@@ -167,7 +167,7 @@ class DDQN(object):
             next_Q = self.Q(next_state)
             next_action = next_Q.argmax(1).reshape(-1, 1)
             target_Q = self.Q_target(next_state)
-            target_Q = reward + done*self.gamma*target_Q.gather(1, next_action)
+            target_Q = reward + done*self.discount*target_Q.gather(1, next_action)
 
         current_Q = self.Q(state).gather(1, action)
         #td_loss = (current_Q - target_Q).abs()

@@ -12,8 +12,8 @@ parser.add_argument(
 parser.add_argument(
     '--train_freq',
     type=int,
-    default=64,
-    help='Number of environment steps between DQN updates')
+    default=4,
+    help='Number of steps between DQN updates')
 parser.add_argument(
     '--eval_freq',
     type=int,
