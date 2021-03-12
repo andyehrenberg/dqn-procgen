@@ -230,7 +230,7 @@ class DQN_no_duel(nn.Module):
 
     def forward(self, x, log=False):
         x = self.features(x)
-        x = x.view(-1, self.conv_output.size)
+        x = x.view(-1, self.conv_output_size)
         q = self.fc2(F.relu(self.fc1(x))).view(-1, self.action_space)
         return q
 
