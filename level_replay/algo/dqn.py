@@ -226,7 +226,7 @@ class DQN_no_duel(nn.Module):
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
         self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.fc2 = nn.Linear(self.hidden_size, self.action_space)
+        self.fc2 = nn.Linear(args.hidden_size, self.action_space)
 
     def forward(self, x, log=False):
         x = self.features(x)
