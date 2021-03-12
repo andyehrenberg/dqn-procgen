@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser(description='DQN')
 parser.add_argument(
     '--start_timesteps',
     type=int,
-    default=20000,
+    default=1250,
     help='Timesteps until using DQN to take actions')
 parser.add_argument(
     '--train_freq',
@@ -72,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=8e3,
+    default=500,
     help='How often to update target network')
 parser.add_argument(
     '--tau',
@@ -126,7 +126,7 @@ parser.add_argument(
 parser.add_argument(
     '--hidden_size',
     type=int,
-    default=256)
+    default=512)
 parser.add_argument(
     '--noisy_std',
     type=float,
@@ -212,7 +212,7 @@ parser.add_argument(
     default=64)
 parser.add_argument(
     '--env_name',
-    default='coinrun')
+    default='starpilot')
 parser.add_argument(
     '--distribution_mode',
     default='easy')
