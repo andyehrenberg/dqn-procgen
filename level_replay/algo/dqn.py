@@ -170,7 +170,7 @@ class RainbowDQN(nn.Module):
         super(DQN, self).__init__()
         self.atoms = args.atoms
         self.action_space = action_space
-        
+
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
         self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
@@ -186,22 +186,22 @@ class RainbowDQN(nn.Module):
         value, advantage = value.view(-1, 1, self.atoms), advantage.view(-1, self.action_space, self.atoms)
         q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
         if log:  # Use log softmax for numerical stability
-            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension   
+            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension
         else:
             q = F.softmax(q, dim=2) # Probabilities with action over second dimension
-        
+
         return q
 
     def reset_noise(self):
         for name, module in self.named_children():
             if 'fc' in name:
                 module.reset_noise()
-                
+
 class DQN(nn.Module):
     def __init__(self, args, action_space):
         super(DQN, self).__init__()
         self.action_space = action_space
-        
+
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
         self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
@@ -216,4 +216,42 @@ class DQN(nn.Module):
         advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
         value, advantage = value.view(-1, 1,), advantage.view(-1, self.action_space)
         q = value + advantage - advantage.mean(1, keepdim=True) # Combine streams
+        return q
+
+class DQN_no_duel(nn.Module):
+    def __init__(self, args, action_space):
+        super(DQN_no_duel, self).__init__()
+        self.action_space = action_space
+
+        self.features = ImpalaCNN(args.state_dim[0])
+        self.conv_output_size = 2048
+        self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc2 = nn.Linear(self.hidden_size, self.action_space)
+
+    def forward(self, x, log=False):
+        x = self.features(x)
+        x = x.view(-1, self.conv_output.size)
+        q = self.fc2(F.relu(self.fc1(x))).view(-1, self.action_space)
+        return q
+
+class TwoNetworkDQN(nn.Module):
+    def __init__(self, args, action_space):
+        super(TwoNetworkDQN, self).__init__()
+        self.action_space = action_space
+
+        self.value_features = ImpalaCNN(args.state_dim[0])
+        self.advantage_features = ImpalaCNN(args.state_dim[0])
+        self.conv_output_size = 2048
+        self.value_fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.advantage_fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.value_fc2 = nn.Linear(args.hidden_size, 1)
+        self.advantage_fc2 = nn.Linear(args.hidden_size, action_space)
+
+    def forward(self, x, log=False):
+        value_x = self.value_features(x)
+        advantage_x = self.advantage_features(x)
+        value = self.value_fc2(F.relu(self.value_fc1(value_x)))
+        advantage = self.advantage_fc2(F.relu(self.advantage_fc2(advantage_x)))
+        value, advantage = value.view(-1, 1,), advantage.view(-1, self.action_space)
+        q = value + advantage - advantage.mean(1, keepdim=True)
         return q
