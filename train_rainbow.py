@@ -58,7 +58,7 @@ def train(args, seeds):
         #)
 
     else:
-        wandb.init(project="test", entity="andyehrenberg", config=vars(args))
+        wandb.init(project="test", entity="andyehrenberg", config=vars(args), wandb.Settings(start_method="fork"))
 
     start_level = 0
 
