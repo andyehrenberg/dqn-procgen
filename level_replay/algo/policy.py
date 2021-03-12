@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import RainbowDQN, DQN
+from level_replay.algo.dqn import RainbowDQN, DQN, DQN_no_duel, TwoNetworkDQN
 from torch.nn.utils import clip_grad_norm_
 
 class Rainbow(object):
@@ -127,7 +127,10 @@ class DDQN(object):
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
-        self.Q = DQN(args, self.action_space).to(self.device)
+        if args.arch != 'no_duel':
+            self.Q = DQN(args, self.action_space).to(self.device)
+        else:
+            self.Q = DQN_no_duel(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
 

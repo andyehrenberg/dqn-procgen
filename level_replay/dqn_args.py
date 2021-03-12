@@ -170,7 +170,7 @@ parser.add_argument(
     default=0.99)
 parser.add_argument(
     '--arch',
-    default='large')
+    default='no_duel')
 parser.add_argument(
     '--clip_param',
     type=float,

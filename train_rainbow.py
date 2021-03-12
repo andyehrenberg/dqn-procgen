@@ -16,7 +16,6 @@ import torch
 from baselines.logger import HumanOutputFormat
 
 from level_replay import utils
-from level_replay.algo.dqn import RainbowDQN, DQN
 from level_replay.algo.policy import Rainbow, DDQN
 from level_replay.algo.buffer import make_buffer
 from level_replay.model import model_for_env_name
