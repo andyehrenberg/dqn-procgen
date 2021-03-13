@@ -72,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=500,
+    default=1000,
     help='How often to update target network')
 parser.add_argument(
     '--tau',

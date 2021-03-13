@@ -130,12 +130,15 @@ def train(args, seeds):
     #losses = []
     loss, grad_magnitude = None, None
 
-    eps = .9
+    epsilon_start = 1.0
+    epsilon_final = 0.1
+    epsilon_decay = 2500
+
+    epsilon = lambda t: epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1. * (t - args.start_timesteps) / epsilon_decay)
 
     for t in trange(num_steps):
-        if t < args.start_timesteps or np.random.uniform() < eps:
-            if t > args.start_timesteps and eps > 0.1:
-                eps -= 5.75e-5
+        action = None
+        if t < args.start_timesteps or np.random.uniform() < epsilon(t):
             action = torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1).to(args.device)
         else:
             action, _ = agent.select_action(state)
