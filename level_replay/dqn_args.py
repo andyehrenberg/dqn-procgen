@@ -18,7 +18,7 @@ parser.add_argument(
 parser.add_argument(
     '--eval_freq',
     type=int,
-    default=500,
+    default=1000,
     help='Evaluation frequency')
 parser.add_argument(
     '--T_max',
