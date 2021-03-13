@@ -163,6 +163,7 @@ class DDQN(object):
             action = q.argmax(1).reshape(-1, 1)
             return action, None
 
+
     def train(self, replay_buffer):
         state, action, next_state, reward, done, seeds, ind, weights = replay_buffer.sample()
 
