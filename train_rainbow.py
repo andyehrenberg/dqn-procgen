@@ -130,8 +130,12 @@ def train(args, seeds):
     #losses = []
     loss, grad_magnitude = None, None
 
+    eps = .9
+
     for t in trange(num_steps):
-        if t < args.start_timesteps or np.random.uniform() < 0.05:
+        if t < args.start_timesteps or np.random.uniform() < eps:
+            if t > args.start_timesteps and eps > 0.1:
+                eps -= 5.75e-5
             action = torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1).to(args.device)
         else:
             action, _ = agent.select_action(state)
@@ -243,8 +247,12 @@ def eval_policy(args, policy, num_episodes, num_processes=1, deterministic=False
     else:
         state = eval_envs.reset()
     while len(eval_episode_rewards) < num_episodes:
-        with torch.no_grad():
-            action, q = policy.select_action(state, eval=True)
+        action = None
+        if np.random.uniform() < 0.05:
+            action = torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1).to(args.device)
+        else:
+            with torch.no_grad():
+                action, q = policy.select_action(state, eval=True)
         state, _, done, infos = eval_envs.step(action)
         for info in infos:
             if 'episode' in info.keys():
