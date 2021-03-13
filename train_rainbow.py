@@ -249,7 +249,7 @@ def eval_policy(args, policy, num_episodes, num_processes=1, deterministic=False
     while len(eval_episode_rewards) < num_episodes:
         action = None
         if np.random.uniform() < 0.05:
-            action = torch.LongTensor([eval_envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1).to(args.device)
+            action = torch.LongTensor([eval_envs.action_space.sample() for _ in range(num_processes)]).reshape(-1, 1).to(args.device)
         else:
             with torch.no_grad():
                 action, q = policy.select_action(state, eval=True)
