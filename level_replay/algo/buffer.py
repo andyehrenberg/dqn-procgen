@@ -132,6 +132,24 @@ class Buffer(AbstractBuffer):
         else:
             pass
 
+class PLRBuffer:
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds):
+        self.buffers = {i: Buffer(state_dim, batch_size, buffer_size, device, prioritized) for i in seeds}
+
+    def add(self, state, action, next_state, reward, done, seeds):
+        n_transitions = state.shape[0]
+        #end = (self.ptr + n_transitions) % self.max_size
+        for i in seeds.unique():
+            s = state[torch.where(seeds == i)[0]]
+            a = action[torch.where(seeds == i)[0]]
+            n_s = next_state[torch.where(seeds == i)[0]]
+            r = reward[torch.where(seeds == i)[0]]
+            d = done[torch.where(seeds == i)[0]]
+            seed = seeds[torch.where(seeds == i)[0]]
+            self.buffers[i].add(s, a, n_s, r, d, seed)
+
+    def sample(self, seed):
+        self.buffers[seed].sample()
 
 class SumTree(object):
     def __init__(self, max_size):
