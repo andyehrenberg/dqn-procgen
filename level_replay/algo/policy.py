@@ -165,15 +165,14 @@ class DDQN(object):
 
 
     def train(self, replay_buffer):
-        state, action, next_state, reward, done, seeds, ind, weights = replay_buffer.sample()
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + done*self.discount*self.Q_target(next_state).gather(1, next_action)
+            target_Q = reward + not_done*self.discount*self.Q_target(next_state).gather(1, next_action)
 
         current_Q = self.Q(state).gather(1, action)
-        #td_loss = (current_Q - target_Q).abs()
-		#loss = self.huber(td_loss)
+
         loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction='none')).mean()
 
         self.Q_optimizer.zero_grad()
@@ -187,8 +186,7 @@ class DDQN(object):
         self.maybe_update_target()
 
         priority = ((current_Q - target_Q).abs() + 1e-10).pow(0.6).cpu().data.numpy().flatten()
-        #priority = loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
-        replay_buffer.update_priority(ind, priority)
+		replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude
 
