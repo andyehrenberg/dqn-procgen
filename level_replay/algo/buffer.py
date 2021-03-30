@@ -10,12 +10,12 @@ class AbstractBuffer():
         self.ptr = 0
         self.size = 0
 
-        self.state = np.zeros((self.max_size, *state_dim))
-        self.action = np.zeros((self.max_size, 1))
+        self.state = np.zeros((self.max_size, *state_dim), dtype=np.uint8)
+        self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
-        self.not_done = np.zeros((self.max_size, 1))
-        self.seeds = np.zeros((self.max_size, 1))
+        self.not_done = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.seeds = np.zeros((self.max_size, 1), dtype=np.uint8)
 
     def add(self, state, action, next_state, reward, done, seeds):
         pass
@@ -62,14 +62,19 @@ class Buffer(AbstractBuffer):
         n_transitions = state.shape[0]
         end = (self.ptr + n_transitions) % self.max_size
         if 'cuda' in self.device.type:
-            state = state.cpu()
-            action = action.cpu()
-            next_state = next_state.cpu()
-            reward = reward.cpu()
-            try:
-                seeds = seeds.cpu()
-            except:
-                pass
+            state = (state*255).cpu().numpy().astype(np.uint8)
+            action = action.cpu().numpy().astype(np.uint8)
+            next_state = (next_state*255).cpu().numpy().astype(np.uint8)
+            reward = reward.cpu().numpy()
+            seeds = seeds.cpu().numpy().astype(np.uint8)
+        else:
+            state = (state*255).numpy().astype(np.uint8)
+            action = action.numpy().astype(np.uint8)
+            next_state = (next_state*255).numpy().astype(np.uint8)
+            seeds = seeds.numpy().astype(np.uint8)
+
+        not_done = (1 - done).reshape(-1, 1)
+
         if self.ptr + n_transitions > self.max_size:
             self.state[self.ptr:] = state[:n_transitions - end]
             self.state[:end] = state[n_transitions - end:]
@@ -83,7 +88,6 @@ class Buffer(AbstractBuffer):
             self.reward[self.ptr:] = reward[:n_transitions - end]
             self.reward[:end] = reward[n_transitions - end:]
 
-            not_done = (1. - done).reshape(-1, 1)
             self.not_done[self.ptr:] = not_done[:n_transitions - end]
             self.not_done[:end] = not_done[n_transitions - end:]
             self.seeds[self.ptr:] = seeds[:n_transitions - end]
@@ -93,7 +97,7 @@ class Buffer(AbstractBuffer):
             self.action[self.ptr:self.ptr+n_transitions] = action
             self.next_state[self.ptr:self.ptr+n_transitions] = next_state
             self.reward[self.ptr:self.ptr+n_transitions] = reward
-            self.not_done[self.ptr:self.ptr+n_transitions] = (1. - done).reshape(-1, 1)
+            self.not_done[self.ptr:self.ptr+n_transitions] = not_done
             self.seeds[self.ptr:self.ptr+n_transitions] = seeds
 
         if self.prioritized:
@@ -107,9 +111,9 @@ class Buffer(AbstractBuffer):
             else np.random.randint(0, self.size, size=self.batch_size)
 
         batch = (
-            torch.FloatTensor(self.state[ind]).to(self.device),
+            torch.FloatTensor(self.state[ind]).to(self.device)/255.,
             torch.LongTensor(self.action[ind]).to(self.device),
-            torch.FloatTensor(self.next_state[ind]).to(self.device),
+            torch.FloatTensor(self.next_state[ind]).to(self.device)/255.,
             torch.FloatTensor(self.reward[ind]).to(self.device),
             torch.FloatTensor(self.not_done[ind]).to(self.device),
             torch.LongTensor(self.seeds[ind]).to(self.device)
