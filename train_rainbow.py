@@ -163,7 +163,7 @@ def train(args, seeds):
                 episode_reward = info['episode']['r']
                 episode_rewards.append(episode_reward)
                 if args.wandb:
-                    wandb.log({"Train Episode Returns": episode_reward}, step=t)
+                    wandb.log({"Train Episode Returns": episode_reward}, step=t*64)
             if level_sampler:
                 level_seeds[i][0] = info['level_seed']
 
@@ -176,7 +176,7 @@ def train(args, seeds):
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
             if args.wandb:
-                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
+                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t*64)
             #losses.append(loss)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
@@ -191,7 +191,7 @@ def train(args, seeds):
             if args.wandb:
                 wandb.log({
                 "Test Evaluation Returns": np.mean(eval_episode_rewards), "Train Evaluation Returns": np.mean(train_eval_episode_rewards)
-                }, step=t)
+                }, step=t*64)
 
             else:
                 stats = {

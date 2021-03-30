@@ -8,12 +8,12 @@ parser = argparse.ArgumentParser(description='DQN')
 parser.add_argument(
     '--start_timesteps',
     type=int,
-    default=1250,
+    default=2000,
     help='Timesteps until using DQN to take actions')
 parser.add_argument(
     '--train_freq',
     type=int,
-    default=4,
+    default=64,
     help='Number of steps between DQN updates')
 parser.add_argument(
     '--eval_freq',
@@ -112,7 +112,7 @@ parser.add_argument(
 parser.add_argument(
     '--batch_size',
     type=int,
-    default=512,
+    default=1024,
     help='Batch Size')
 parser.add_argument(
     '--norm_clip',
@@ -202,7 +202,7 @@ parser.add_argument(
 parser.add_argument(
     '--PER',
     type=lambda x: bool(strtobool(x)),
-    default=False,
+    default=True,
     help='Whether to use PER')
 
 #Environment parameters
@@ -235,7 +235,7 @@ parser.add_argument(
 parser.add_argument(
     '--memory_capacity',
     type=int,
-    default=1e5)
+    default=1e6)
 parser.add_argument(
     '--reward_clip',
     type=float,
