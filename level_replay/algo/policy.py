@@ -186,7 +186,7 @@ class DDQN(object):
         self.maybe_update_target()
 
         priority = ((current_Q - target_Q).abs() + 1e-10).pow(0.6).cpu().data.numpy().flatten()
-		replay_buffer.update_priority(ind, priority)
+        replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude
 
