@@ -72,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=1000,
+    default=2000,
     help='How often to update target network')
 parser.add_argument(
     '--tau',
@@ -112,7 +112,7 @@ parser.add_argument(
 parser.add_argument(
     '--batch_size',
     type=int,
-    default=1024,
+    default=512,
     help='Batch Size')
 parser.add_argument(
     '--norm_clip',
@@ -151,7 +151,7 @@ parser.add_argument(
 parser.add_argument(
     '--priority_exponent',
     type=float,
-    default=0.5,)
+    default=0.5)
 parser.add_argument(
     '--t',
     type=int,
@@ -168,9 +168,6 @@ parser.add_argument(
     '--alpha',
     type=float,
     default=0.99)
-parser.add_argument(
-    '--arch',
-    default='no_duel')
 parser.add_argument(
     '--clip_param',
     type=float,

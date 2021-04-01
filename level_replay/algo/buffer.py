@@ -49,14 +49,16 @@ class Buffer(AbstractBuffer):
 '''
 
 class Buffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized):
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates):
         super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
+
 
         if self.prioritized:
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
             self.beta = 0.4
+            self.beta_stepper = (1 - 0.4)/float(num_updates)
 
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0]
@@ -122,7 +124,7 @@ class Buffer(AbstractBuffer):
         if self.prioritized:
             weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
             weights /= weights.max()
-            self.beta = min(self.beta + 2e-7, 1) # Hardcoded: 0.4 + 2e-7 * 3e6 = 1.0. Only used by PER.
+            self.beta = min(self.beta + self.beta_stepper, 1)
             batch += (ind, torch.FloatTensor(weights).to(self.device).reshape(-1, 1))
         else:
             batch += (ind, torch.FloatTensor([1]).to(self.device))
@@ -137,8 +139,8 @@ class Buffer(AbstractBuffer):
             pass
 
 class PLRBuffer:
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds):
-        self.buffers = {i: Buffer(state_dim, batch_size, buffer_size, device, prioritized) for i in seeds}
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
+        self.buffers = {i: Buffer(state_dim, batch_size, buffer_size, device, prioritized, num_updates) for i in seeds}
 
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0]
@@ -165,7 +167,6 @@ class SumTree(object):
             nodes = np.zeros(level_size)
             self.nodes.append(nodes)
             level_size *= 2
-
 
     # Batch binary search through sum tree
     # Sample a priority between 0 and the max priority
@@ -205,12 +206,13 @@ class SumTree(object):
             np.add.at(nodes, node_index, priority_diff)
             node_index //= 2
 
-def make_buffer(args):
+def make_buffer(args, num_updates):
     replay_buffer = Buffer(
         args.state_dim,
         args.batch_size,
         args.memory_capacity,
         args.device,
-        args.PER
+        args.PER,
+        num_updates
     )
     return replay_buffer

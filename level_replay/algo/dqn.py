@@ -218,22 +218,6 @@ class DQN(nn.Module):
         q = value + advantage - advantage.mean(1, keepdim=True) # Combine streams
         return q
 
-class DQN_no_duel(nn.Module):
-    def __init__(self, args, action_space):
-        super(DQN_no_duel, self).__init__()
-        self.action_space = action_space
-
-        self.features = ImpalaCNN(args.state_dim[0])
-        self.conv_output_size = 2048
-        self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.fc2 = nn.Linear(args.hidden_size, self.action_space)
-
-    def forward(self, x, log=False):
-        x = self.features(x)
-        x = x.view(-1, self.conv_output_size)
-        q = self.fc2(F.relu(self.fc1(x))).view(-1, self.action_space)
-        return q
-
 class TwoNetworkDQN(nn.Module):
     def __init__(self, args, action_space):
         super(TwoNetworkDQN, self).__init__()

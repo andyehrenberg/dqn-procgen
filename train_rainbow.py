@@ -86,7 +86,9 @@ def train(args, seeds):
         paint_vel_info=args.paint_vel_info,
         level_sampler_args=level_sampler_args)
 
-    replay_buffer = make_buffer(args)
+    num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
+
+    replay_buffer = make_buffer(args, num_updates)
 
     agent = DDQN(args)
     '''
