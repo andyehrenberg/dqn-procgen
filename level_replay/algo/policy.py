@@ -170,7 +170,8 @@ class DDQN(object):
 
         current_Q = self.Q(state).gather(1, action)
 
-        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction='none')).mean()
+        td_loss = (current_Q - target_Q).abs()
+        loss = self.huber(td_loss)
 
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
@@ -182,7 +183,7 @@ class DDQN(object):
         self.iterations += 1
         self.maybe_update_target()
 
-        priority = ((current_Q - target_Q).abs() + 1e-10).pow(0.6).cpu().data.numpy().flatten()
+        priority = td_loss.clamp(min=self.min_priority).pow(self.alpha).cpu().data.numpy().flatten()
         replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude

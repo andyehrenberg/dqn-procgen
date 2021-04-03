@@ -129,7 +129,6 @@ def train(args, seeds):
     timer = timeit.default_timer
     update_start_time = timer()
 
-    #losses = []
     loss, grad_magnitude = None, None
 
     epsilon_start = 1.0

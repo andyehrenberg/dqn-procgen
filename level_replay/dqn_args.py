@@ -100,7 +100,7 @@ parser.add_argument(
 parser.add_argument(
     '--min_priority',
     type=float,
-    default=1e-2)
+    default=1e-1)
 parser.add_argument(
     '--V_min',
     type=float,
@@ -167,7 +167,7 @@ parser.add_argument(
 parser.add_argument(
     '--alpha',
     type=float,
-    default=0.99)
+    default=0.6)
 parser.add_argument(
     '--clip_param',
     type=float,
