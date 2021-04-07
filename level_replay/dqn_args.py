@@ -231,7 +231,7 @@ parser.add_argument(
     default=0)
 parser.add_argument(
     '--memory_capacity',
-    type=lambda x: int(x),
+    type=float,
     default=1e6)
 parser.add_argument(
     '--reward_clip',

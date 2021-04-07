@@ -26,33 +26,10 @@ class AbstractBuffer():
     def update_priority(self, ind, priority):
         pass
 
-'''
-class Buffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device):
-        super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
-
-    def sample(self):
-        ind = np.random.randint(0, self.size, size=self.batch_size)
-
-        batch = (
-            torch.FloatTensor(self.state[ind]).to(self.device),
-            torch.LongTensor(self.action[ind]).to(self.device),
-            torch.FloatTensor(self.next_state[ind]).to(self.device),
-            torch.FloatTensor(self.reward[ind]).to(self.device),
-            torch.FloatTensor(self.not_done[ind]).to(self.device),
-            torch.LongTensor(self.seeds[ind]).to(self.device)
-        )
-
-        batch += (ind, torch.FloatTensor([1]).to(self.device))
-
-        return batch
-'''
-
 class Buffer(AbstractBuffer):
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates):
         super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
-
 
         if self.prioritized:
             self.tree = SumTree(self.max_size)
