@@ -61,7 +61,7 @@ class Buffer(AbstractBuffer):
             self.beta_stepper = (1 - 0.4)/float(num_updates)
 
     def add(self, state, action, next_state, reward, done, seeds):
-        n_transitions = state.shape[0]
+        n_transitions = state.shape[0] if len(state.shape) == 4 else 1
         end = (self.ptr + n_transitions) % self.max_size
         if 'cuda' in self.device.type:
             state = (state*255).cpu().numpy().astype(np.uint8)

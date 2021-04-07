@@ -91,20 +91,6 @@ def train(args, seeds):
     replay_buffer = make_buffer(args, num_updates)
 
     agent = DDQN(args)
-    '''
-    def checkpoint():
-        if args.disable_checkpoint:
-            return
-        logging.info("Saving checkpoint to %s", checkpointpath)
-        torch.save(
-            {
-                "model_state_dict": model.online_net.state_dict(),
-                #"optimizer_state_dict": agent.optimizer.state_dict(),
-                "args": vars(args),
-            },
-            checkpointpath,
-        )
-    '''
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -118,9 +104,9 @@ def train(args, seeds):
     episode_reward = 0
     episode_num = 0
 
-    #state_deque = deque(maxlen=args.multi_step)
-    #reward_deque = deque(maxlen=args.multi_step)
-    #action_deque = deque(maxlen=args.multi_step)
+    state_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
+    reward_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
+    action_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
 
     num_steps = int(
         args.T_max // args.num_processes
@@ -146,17 +132,7 @@ def train(args, seeds):
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
-        #Uncomment out if using multi step returns
-        #state_deque.append(state)
-        #reward_deque.append(reward)
-        #action_deque.append(action)
 
-        #if len(state_deque) == args.multi_step or done:
-            #n_reward = multi_step_reward(reward_deque, args.gamma)
-            #n_state = state_deque[0]
-            #n_action = action_deque[0]
-
-        # For atari, info[0] = clipped reward, info[1] = done_float
         for i, info in enumerate(infos):
             if 'bad_transition' in info.keys():
                 print("Bad transition")
@@ -168,7 +144,18 @@ def train(args, seeds):
             if level_sampler:
                 level_seeds[i][0] = info['level_seed']
 
-        replay_buffer.add(state, action, next_state, reward, np.float32(done), level_seeds)
+        if args.multi_step == 1:
+            replay_buffer.add(state, action, next_state, reward, np.uint8(done), level_seeds)
+        else:
+            for i in range(args.num_processes):
+                state_deque[i].append(state[i])
+                reward_deque[i].append(reward[i])
+                action_deque[i].append(action[i])
+                if len(state_deque[i]) == args.multi_step or done[i]:
+                    n_reward = multi_step_reward(reward_deque[i], args.gamma)
+                    n_state = state_deque[i][0]
+                    n_action = action_deque[i][0]
+                    replay_buffer.add(n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i])
 
         state = next_state
         episode_start = False
@@ -178,7 +165,6 @@ def train(args, seeds):
             loss, grad_magnitude = agent.train(replay_buffer)
             if args.wandb:
                 wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t*64)
-            #losses.append(loss)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             if not args.wandb:
