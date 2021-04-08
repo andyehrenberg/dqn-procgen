@@ -100,9 +100,7 @@ def train(args, seeds):
     level_seeds = level_seeds.unsqueeze(-1)
     episode_rewards = deque(maxlen=10)
 
-    episode_start = True
     episode_reward = 0
-    episode_num = 0
 
     state_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     reward_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
@@ -158,7 +156,6 @@ def train(args, seeds):
                     replay_buffer.add(n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i])
 
         state = next_state
-        episode_start = False
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:

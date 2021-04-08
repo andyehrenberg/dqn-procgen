@@ -109,11 +109,8 @@ class Buffer(AbstractBuffer):
         return batch
 
     def update_priority(self, ind, priority):
-        if self.prioritized:
-            self.max_priority = max(priority.max(), self.max_priority)
-            self.tree.batch_set(ind, priority)
-        else:
-            pass
+        self.max_priority = max(priority.max(), self.max_priority)
+        self.tree.batch_set(ind, priority)
 
 class PLRBuffer:
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
