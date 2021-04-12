@@ -133,6 +133,7 @@ class DDQN(object):
 
         self.discount = args.discount
         self.PER = args.PER
+        self.n_step = args.multi_step
 
         self.alpha = args.alpha
         self.min_priority = args.min_priority
@@ -167,7 +168,7 @@ class DDQN(object):
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done*self.discount*self.Q_target(next_state).gather(1, next_action)
+            target_Q = reward + not_done*(self.discount**self.n_step)*self.Q_target(next_state).gather(1, next_action)
 
         current_Q = self.Q(state).gather(1, action)
 
