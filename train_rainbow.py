@@ -139,6 +139,9 @@ def train(args, seeds):
                 episode_rewards.append(episode_reward)
                 if args.wandb:
                     wandb.log({"Train Episode Returns": episode_reward}, step=t*64)
+                state_deque[i].clear()
+                reward_deque[i].clear()
+                action_deque[i].clear()
             if level_sampler:
                 level_seeds[i][0] = info['level_seed']
 
