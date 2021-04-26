@@ -131,8 +131,7 @@ def train(args):
             wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
-            eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
-
+            eval_episode_rewards = eval_policy(args, agent)
             wandb.log({"Evaluation Returns": np.mean(eval_episode_rewards)}, step=t)
 
 def eval_policy(args, policy, num_episodes=10):
