@@ -128,8 +128,7 @@ def train(args):
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
-            if args.wandb:
-                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
+            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
