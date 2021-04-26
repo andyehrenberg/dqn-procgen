@@ -1,7 +1,7 @@
 import argparse
 from distutils.util import strtobool
 
-parser = argparse.ArgumentParser(description='DQN')
+parser = argparse.ArgumentParser(description='Atari DQN')
 
 #Training parameters
 parser.add_argument(
@@ -12,7 +12,7 @@ parser.add_argument(
 parser.add_argument(
     '--train_freq',
     type=int,
-    default=64,
+    default=4,
     help='Number of steps between DQN updates')
 parser.add_argument(
     '--eval_freq',
@@ -44,7 +44,7 @@ parser.add_argument(
 parser.add_argument(
     '--state_dim',
     type=tuple,
-    default= (3, 64, 64))
+    default= (4, 84, 84))
 parser.add_argument(
     '--no_cuda',
     type=lambda x: bool(strtobool(x)),
@@ -101,14 +101,6 @@ parser.add_argument(
     type=float,
     default=1e-1)
 parser.add_argument(
-    '--V_min',
-    type=float,
-    default=0)
-parser.add_argument(
-    '--V_max',
-    type=float,
-    default=100)
-parser.add_argument(
     '--batch_size',
     type=int,
     default=512,
@@ -118,19 +110,9 @@ parser.add_argument(
     type=float,
     default=10)
 parser.add_argument(
-    '--atoms',
-    type=int,
-    default=51,
-    help='Number of atoms for distributional RL')
-parser.add_argument(
     '--hidden_size',
     type=int,
     default=512)
-parser.add_argument(
-    '--noisy_std',
-    type=float,
-    default=0.5,
-    help='Standard deviation for noisy layers')
 parser.add_argument(
     '--model',
     default=None)
@@ -180,10 +162,6 @@ parser.add_argument(
     type=float,
     default=0.01)
 parser.add_argument(
-    '--final_num_test_seeds',
-    type=int,
-    default=1000)
-parser.add_argument(
     '--full_train_distribution',
     type=lambda x: bool(strtobool(x)),
     default=False)
@@ -208,7 +186,7 @@ parser.add_argument(
     default=64)
 parser.add_argument(
     '--env_name',
-    default='starpilot')
+    default='PongNoFrameskip-v0')
 parser.add_argument(
     '--distribution_mode',
     default='easy')
@@ -216,10 +194,6 @@ parser.add_argument(
     '--paint_vel_info',
     type=lambda x: bool(strtobool(x)),
     default=False)
-parser.add_argument(
-    '--start_level',
-    type=int,
-    default=0)
 parser.add_argument(
     '--render',
     type=lambda x: bool(strtobool(x)),
@@ -237,37 +211,6 @@ parser.add_argument(
     type=float,
     default=1)
 
-#Level Replay parameters
-parser.add_argument(
-    '--level_replay_alpha',
-    type=float,
-    default=1.0)
-parser.add_argument(
-    '--level_replay_eps',
-    type=float,
-    default=0.05)
-parser.add_argument(
-    '--level_replay_nu',
-    type=float,
-    default=0.5)
-parser.add_argument(
-    '--level_replay_rho',
-    type=float,
-    default=1.0)
-parser.add_argument(
-    '--level_replay_schedule',
-    default='proportionate')
-parser.add_argument(
-    '--level_replay_score_transform',
-    default='rank')
-parser.add_argument(
-    '--level_replay_strategy',
-    default='value_l1'
-)
-parser.add_argument(
-    '--level_replay_temperature',
-    type=float,
-    default=0.1)
 parser.add_argument(
     '--max_grad_norm',
     type=float,
@@ -281,22 +224,6 @@ parser.add_argument(
     type=int,
     default=8)
 parser.add_argument(
-    '--num_steps',
-    type=int,
-    default=256)
-parser.add_argument(
-    '--num_test_seeds',
-    type=int,
-    default=10)
-parser.add_argument(
-    '--num_train_seeds',
-    type=int,
-    default=200)
-parser.add_argument(
-    '--ppo_epoch',
-    type=int,
-    default=3)
-parser.add_argument(
     '--save_interval',
     type=int,
     default=60)
@@ -304,24 +231,6 @@ parser.add_argument(
     '--seed',
     type=int,
     default=1)
-parser.add_argument(
-    '--seed_path',
-    default=None)
-parser.add_argument(
-    '--staleness_coef',
-    type=float,
-    default=0.1)
-parser.add_argument(
-    '--staleness_temperature',
-    type=float,
-    default=1.0)
-parser.add_argument(
-    '--staleness_transform',
-    default='power')
-parser.add_argument(
-    '--value_loss_coef',
-    type=float,
-    default=0.5)
 parser.add_argument(
     '--weight_log_interval',
     type=int,

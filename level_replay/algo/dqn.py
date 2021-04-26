@@ -203,7 +203,11 @@ class DQN(nn.Module):
         self.action_space = action_space
 
         self.features = ImpalaCNN(args.state_dim[0])
-        self.conv_output_size = 2048
+        if args.state_dim != (3, 64, 64):
+            example_state = torch.randn((1,)+args.state_dim)
+            self.conv_output_size = self.features(example_state).shape[1]
+        else:
+            self.conv_output_size = 2048
         self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
         self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
         self.fc_z_v = nn.Linear(args.hidden_size, 1)

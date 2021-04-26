@@ -10,9 +10,6 @@ import time
 from collections import deque
 import timeit
 import logging
-
-import numpy as np
-import torch
 from baselines.logger import HumanOutputFormat
 
 from level_replay import utils
