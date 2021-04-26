@@ -159,6 +159,7 @@ def eval_policy(args, policy, num_episodes=10):
             with torch.no_grad():
                 action, _ = policy.select_action(state.unsqueeze(0), eval=True)
         state, reward, done, info = eval_env.step(action)
+        state = (torch.FloatTensor(state)/255.).to(args.device)
         episode_returns += reward
         if done:
             eval_episode_rewards.append(episode_returns)
