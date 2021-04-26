@@ -102,20 +102,6 @@ def train(args):
         next_state = (torch.FloatTensor(next_state)/255.).to(args.device)
         episode_reward += reward
 
-        for i, info in enumerate(infos):
-            if 'bad_transition' in info.keys():
-                print("Bad transition")
-            if 'episode' in info.keys():
-                episode_reward = info['episode']['r']
-                episode_rewards.append(episode_reward)
-                if args.wandb:
-                    wandb.log({"Train Episode Returns": episode_reward}, step=t*64)
-                state_deque[i].clear()
-                reward_deque[i].clear()
-                action_deque[i].clear()
-            if level_sampler:
-                level_seeds[i][0] = info['level_seed']
-
         reward = info[0]
 
         state_deque.append(state)
