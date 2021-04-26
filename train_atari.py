@@ -154,15 +154,15 @@ def train(args):
 
             wandb.log({"Evaluation Returns": np.mean(eval_episode_rewards)}, step=t)
 
-def eval_policy(args, policy, num_episodes=10, num_processes=1):
+def eval_policy(args, policy, num_episodes=10):
     atari_preprocessing = {
-		"frame_skip": 4,
-		"frame_size": 84,
-		"state_history": 4,
-		"done_on_life_loss": True,
-		"reward_clipping": True,
-		"max_episode_timesteps": 27e3
-	}
+        "frame_skip": 4,
+        "frame_size": 84,
+        "state_history": 4,
+        "done_on_life_loss": True,
+        "reward_clipping": True,
+        "max_episode_timesteps": 27e3
+    }
     eval_env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
     eval_episode_rewards = []
