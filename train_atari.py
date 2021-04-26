@@ -157,7 +157,7 @@ def eval_policy(args, policy, num_episodes=10):
             action = torch.LongTensor([eval_env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:
             with torch.no_grad():
-                action, _ = policy.select_action(state, eval=True)
+                action, _ = policy.select_action(state.unsqueeze(0), eval=True)
         state, reward, done, info = eval_env.step(action)
         episode_returns += reward
         if done:
