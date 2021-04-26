@@ -27,7 +27,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 last_checkpoint_time = None
 
-def train(args, seeds):
+def train(args):
     global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.device = torch.device("cuda:0" if args.cuda else "cpu")
@@ -210,4 +210,4 @@ if __name__ == "__main__":
     else:
         logging.disable(logging.CRITICAL)
 
-    train(args, train_seeds)
+    train(args)
