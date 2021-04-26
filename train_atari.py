@@ -53,10 +53,6 @@ def train(args):
 
     env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
-    num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-
-    replay_buffer = make_buffer(args, num_updates)
-
     args.num_actions = env.action_space.n
     agent = DDQN(args)
 
