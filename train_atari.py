@@ -57,21 +57,22 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args, num_updates)
 
+    args.num_actions = env.action_space.n
     agent = DDQN(args)
 
-    state = envs.reset()
+    num_updates = (args.T_max - args.start_timesteps) // args.train_freq
+
+    replay_buffer = make_buffer(args, num_updates)
 
     episode_rewards = deque(maxlen=10)
 
     episode_reward = 0
 
-    state_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
-    reward_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
-    action_deque = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
+    state_deque = deque(maxlen=args.multi_step)
+    reward_deque = deque(maxlen=args.multi_step)
+    action_deque = deque(maxlen=args.multi_step)
 
-    num_steps = int(
-        args.T_max // args.num_processes
-    )
+    num_steps = int(args.T_max)
 
     timer = timeit.default_timer
     update_start_time = timer()
@@ -84,15 +85,26 @@ def train(args, seeds):
 
     epsilon = lambda t: epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1. * (t - args.start_timesteps) / epsilon_decay)
 
+    state, done = env.reset(), False
+    state = (torch.FloatTensor(state)/255.).to(args.device)
+
+    episode_start = True
+    episode_reward = 0
+    episode_timesteps = 0
+    episode_num = 0
+
     for t in trange(num_steps):
+        episode_timesteps += 1
         action = None
         if t < args.start_timesteps or np.random.uniform() < epsilon(t):
-            action = torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)]).reshape(-1, 1).to(args.device)
+            action = torch.LongTensor([env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:
-            action, _ = agent.select_action(state)
+            action, _ = agent.select_action(state.unsqueeze(0)
 
         # Perform action and log results
-        next_state, reward, done, infos = envs.step(action)
+        next_state, reward, done, info = env.step(action)
+        next_state = (torch.FloatTensor(next_state)/255.).to(args.device)
+        episode_reward += reward
 
         for i, info in enumerate(infos):
             if 'bad_transition' in info.keys():
@@ -108,61 +120,73 @@ def train(args, seeds):
             if level_sampler:
                 level_seeds[i][0] = info['level_seed']
 
-        for i in range(args.num_processes):
-            state_deque[i].append(state[i])
-            reward_deque[i].append(reward[i])
-            action_deque[i].append(action[i])
-            if len(state_deque[i]) == args.multi_step or done[i]:
-                n_reward = multi_step_reward(reward_deque[i], args.gamma)
-                n_state = state_deque[i][0]
-                n_action = action_deque[i][0]
-                replay_buffer.add(n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), 0)
+        reward = info[0]
+
+        state_deque.append(state)
+        reward_deque.append(reward)
+        action_deque.append(action)
+        if len(state_deque) == args.multi_step or done:
+            n_reward = multi_step_reward(reward_deque, args.gamma)
+            n_state = state_deque[0]
+            n_action = action_deque[0]
+            replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), torch.Tensor([0]))
 
         state = next_state
+        episode_start = False
+
+        if done:
+            wandb.log({"Train Episode Returns": episode_reward})
+            state, done = env.reset(), False
+            state = (torch.FloatTensor(state)/255.).to(args.device)
+            episode_start = True
+            episode_reward = 0
+            episode_timesteps = 0
+            episode_num += 1
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
             if args.wandb:
-                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t*64)
+                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
-            train_eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds)
 
-            wandb.log({
-            "Test Evaluation Returns": np.mean(eval_episode_rewards), "Train Evaluation Returns": np.mean(train_eval_episode_rewards)
-            }, step=t*64)
+            wandb.log({"Evaluation Returns": np.mean(eval_episode_rewards)}, step=t)
 
-def eval_policy(args, policy, num_episodes, num_processes=1):
-    if level_sampler:
-        start_level = level_sampler.seed_range()[0]
-        num_levels = 1
-
-    env = ...
+def eval_policy(args, policy, num_episodes=10, num_processes=1):
+    atari_preprocessing = {
+		"frame_skip": 4,
+		"frame_size": 84,
+		"state_history": 4,
+		"done_on_life_loss": True,
+		"reward_clipping": True,
+		"max_episode_timesteps": 27e3
+	}
+    eval_env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
     eval_episode_rewards = []
-    if level_sampler:
-        state, _ = eval_envs.reset()
-    else:
-        state = eval_envs.reset()
+    state, done = eval_env.reset(), False
+    state = (torch.FloatTensor(state)/255.).to(args.device)
+
+    episode_returns = 0
+
     while len(eval_episode_rewards) < num_episodes:
         action = None
-        if np.random.uniform() < 0.05:
-            action = torch.LongTensor([eval_envs.action_space.sample() for _ in range(num_processes)]).reshape(-1, 1).to(args.device)
+        if np.random.uniform() < args.eval_eps:
+            action = torch.LongTensor([eval_env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:
             with torch.no_grad():
-                action, q = policy.select_action(state, eval=True)
-        state, _, done, infos = eval_envs.step(action)
-        for info in infos:
-            if 'episode' in info.keys():
-                eval_episode_rewards.append(info['episode']['r'])
-                if progressbar:
-                    progressbar.update(1)
+                action, _ = policy.select_action(state, eval=True)
+        state, reward, done, info = eval_env.step(action)
+        episode_returns += reward
+        if done:
+            eval_episode_rewards.append(episode_returns)
+            episode_returns = 0
+            state, done = eval_env.reset(), False
+            state = (torch.FloatTensor(state)/255.).to(args.device)
 
-    eval_envs.close()
-    if progressbar:
-        progressbar.close()
+    eval_env.close()
 
     avg_reward = sum(eval_episode_rewards)/len(eval_episode_rewards)
 

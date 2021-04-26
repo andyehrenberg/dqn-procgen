@@ -95,7 +95,7 @@ parser.add_argument(
 parser.add_argument(
     '--eval_eps',
     type=float,
-    default=0.001)
+    default=0.05)
 parser.add_argument(
     '--min_priority',
     type=float,
