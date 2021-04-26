@@ -167,8 +167,6 @@ def eval_policy(args, policy, num_episodes=10):
             state, done = eval_env.reset(), False
             state = (torch.FloatTensor(state)/255.).to(args.device)
 
-    eval_env.close()
-
     avg_reward = sum(eval_episode_rewards)/len(eval_episode_rewards)
 
     print("---------------------------------------")
