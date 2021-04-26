@@ -95,7 +95,7 @@ def train(args):
         if t < args.start_timesteps or np.random.uniform() < epsilon(t):
             action = torch.LongTensor([env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:
-            action, _ = agent.select_action(state.unsqueeze(0)
+            action, _ = agent.select_action(state.unsqueeze(0))
 
         # Perform action and log results
         next_state, reward, done, info = env.step(action)
