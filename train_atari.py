@@ -40,7 +40,7 @@ def train(args):
     torch.set_num_threads(1)
     utils.seed(args.seed)
 
-    wandb.init(settings=wandb.Settings(start_method="fork"), project="test", entity="andyehrenberg", config=vars(args))
+    wandb.init(settings=wandb.Settings(start_method="fork"), project="atari", entity="andyehrenberg", config=vars(args))
 
     atari_preprocessing = {
 		"frame_skip": 4,
