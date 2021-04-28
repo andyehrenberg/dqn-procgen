@@ -58,7 +58,7 @@ def train(args):
 
     num_updates = (args.T_max - args.start_timesteps) // args.train_freq
 
-    replay_buffer = make_buffer(args, num_updates)
+    replay_buffer = make_buffer(args, num_updates, atari=True)
 
     episode_rewards = deque(maxlen=10)
 

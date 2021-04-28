@@ -114,7 +114,7 @@ class Buffer(AbstractBuffer):
 
 class AtariBuffer(AbstractBuffer):
     def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates):
-        super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
+        super(AtariBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
 
         if self.prioritized:
@@ -130,13 +130,13 @@ class AtariBuffer(AbstractBuffer):
             state = (state*255).cpu().numpy().astype(np.uint8)
             action = action.cpu().numpy().astype(np.uint8)
             next_state = (next_state*255).cpu().numpy().astype(np.uint8)
-            reward = reward.cpu().numpy()
-            seeds = seeds.cpu().numpy().astype(np.uint8)
+            #reward = reward.cpu().numpy()
+            #seeds = seeds.cpu().numpy().astype(np.uint8)
         else:
             state = (state*255).numpy().astype(np.uint8)
             action = action.numpy().astype(np.uint8)
             next_state = (next_state*255).numpy().astype(np.uint8)
-            seeds = seeds.numpy().astype(np.uint8)
+            #seeds = seeds.numpy().astype(np.uint8)
 
         not_done = (1 - done).reshape(-1, 1)
 
@@ -266,13 +266,23 @@ class SumTree(object):
             np.add.at(nodes, node_index, priority_diff)
             node_index //= 2
 
-def make_buffer(args, num_updates):
-    replay_buffer = Buffer(
-        args.state_dim,
-        args.batch_size,
-        args.memory_capacity,
-        args.device,
-        args.PER,
-        num_updates
-    )
+def make_buffer(args, num_updates, atari=False):
+    if not atari:
+        replay_buffer = Buffer(
+            args.state_dim,
+            args.batch_size,
+            args.memory_capacity,
+            args.device,
+            args.PER,
+            num_updates
+        )
+    else:
+        replay_buffer = AtariBuffer(
+            args.state_dim,
+            args.batch_size,
+            args.memory_capacity,
+            args.device,
+            args.PER,
+            num_updates
+        )
     return replay_buffer
