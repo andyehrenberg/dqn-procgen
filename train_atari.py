@@ -111,7 +111,7 @@ def train(args):
             n_reward = multi_step_reward(reward_deque, args.gamma)
             n_state = state_deque[0]
             n_action = action_deque[0]
-            replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), torch.Tensor([0]))
+            replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), np.array([0]))
 
         state = next_state
         episode_start = False
