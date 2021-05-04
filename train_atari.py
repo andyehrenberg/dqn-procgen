@@ -75,9 +75,9 @@ def train(args):
 
     loss, grad_magnitude = None, None
 
-    epsilon_start = 1.0
-    epsilon_final = 0.1
-    epsilon_decay = 2500
+    epsilon_start = args.initial_eps
+    epsilon_final = args.end_eps
+    epsilon_decay = args.eps_decay_period
 
     epsilon = lambda t: epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1. * (t - args.start_timesteps) / epsilon_decay)
 
@@ -143,7 +143,8 @@ def eval_policy(args, policy, num_episodes=10):
         "reward_clipping": True,
         "max_episode_timesteps": 27e3
     }
-    eval_env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
+    eval_env, _, _= utils.make_env(args.env_name, atari_preprocessing)
+    eval_env.seed(arg.seed + 100)
 
     eval_episode_rewards = []
     state, done = eval_env.reset(), False
@@ -152,7 +153,6 @@ def eval_policy(args, policy, num_episodes=10):
     episode_returns = 0
 
     while len(eval_episode_rewards) < num_episodes:
-        action = None
         if np.random.uniform() < args.eval_eps:
             action = torch.LongTensor([eval_env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:

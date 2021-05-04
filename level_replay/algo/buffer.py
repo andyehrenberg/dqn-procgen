@@ -124,8 +124,7 @@ class AtariBuffer(AbstractBuffer):
             self.beta_stepper = (1 - 0.4)/float(num_updates)
 
     def add(self, state, action, next_state, reward, done, seeds):
-        n_transitions = state.shape[0] if len(state.shape) == 4 else 1
-        end = (self.ptr + n_transitions) % self.max_size
+        end = (self.ptr + 1) % self.max_size
         if 'cuda' in self.device.type:
             state = (state*255).cpu().numpy().astype(np.uint8)
             action = action.cpu().numpy().astype(np.uint8)
@@ -140,36 +139,18 @@ class AtariBuffer(AbstractBuffer):
 
         not_done = (1 - done).reshape(-1, 1)
 
-        if self.ptr + n_transitions > self.max_size:
-            self.state[self.ptr:] = state[:n_transitions - end]
-            self.state[:end] = state[n_transitions - end:]
-
-            self.action[self.ptr:] = action[:n_transitions - end]
-            self.action[:end] = action[n_transitions - end:]
-
-            self.next_state[self.ptr:] = next_state[:n_transitions - end]
-            self.next_state[:end] = next_state[n_transitions - end:]
-
-            self.reward[self.ptr:] = reward[:n_transitions - end]
-            self.reward[:end] = reward[n_transitions - end:]
-
-            self.not_done[self.ptr:] = not_done[:n_transitions - end]
-            self.not_done[:end] = not_done[n_transitions - end:]
-            self.seeds[self.ptr:] = seeds[:n_transitions - end]
-            self.seeds[:end] = seeds[n_transitions - end:]
-        else:
-            self.state[self.ptr:self.ptr+n_transitions] = state
-            self.action[self.ptr:self.ptr+n_transitions] = action
-            self.next_state[self.ptr:self.ptr+n_transitions] = next_state
-            self.reward[self.ptr:self.ptr+n_transitions] = reward
-            self.not_done[self.ptr:self.ptr+n_transitions] = not_done
-            self.seeds[self.ptr:self.ptr+n_transitions] = seeds
-
-        if self.prioritized:
-            self.tree.set(self.ptr, self.max_priority)
+        self.state[self.ptr] = state
+        self.action[self.ptr] = action
+        self.next_state[self.ptr] = next_state
+        self.reward[self.ptr] = reward
+        self.not_done[self.ptr] = not_done
+        self.seeds[self.ptr] = seeds
 
         self.ptr = end
         self.size = min(self.size + 1, self.max_size)
+
+        if self.prioritized:
+            self.tree.set(self.ptr, self.max_priority)
 
     def sample(self):
         ind = self.tree.sample(self.batch_size) if self.prioritized \

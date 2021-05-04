@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser(description='Atari DQN')
 parser.add_argument(
     '--start_timesteps',
     type=int,
-    default=2000,
+    default=20000,
     help='Timesteps until using DQN to take actions')
 parser.add_argument(
     '--train_freq',
@@ -71,7 +71,7 @@ parser.add_argument(
 parser.add_argument(
     '--target_update',
     type=int,
-    default=2000,
+    default=8000,
     help='How often to update target network')
 parser.add_argument(
     '--tau',
@@ -86,7 +86,7 @@ parser.add_argument(
 parser.add_argument(
     '--end_eps',
     type=float,
-    default=0.001,
+    default=0.01,
     help='end epsilon')
 parser.add_argument(
     '--eps_decay_period',
@@ -95,7 +95,7 @@ parser.add_argument(
 parser.add_argument(
     '--eval_eps',
     type=float,
-    default=0.05)
+    default=0.001)
 parser.add_argument(
     '--min_priority',
     type=float,
@@ -103,7 +103,7 @@ parser.add_argument(
 parser.add_argument(
     '--batch_size',
     type=int,
-    default=512,
+    default=32,
     help='Batch Size')
 parser.add_argument(
     '--norm_clip',
