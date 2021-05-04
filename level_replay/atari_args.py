@@ -17,7 +17,7 @@ parser.add_argument(
 parser.add_argument(
     '--eval_freq',
     type=int,
-    default=1000,
+    default=50000,
     help='Evaluation frequency')
 parser.add_argument(
     '--T_max',
@@ -36,11 +36,6 @@ parser.add_argument(
     type=float,
     default=2.5e-4,
     help='learning rate')
-parser.add_argument(
-    '--num_actions',
-    type=int,
-    default=15,
-    help='Action space dimension')
 parser.add_argument(
     '--state_dim',
     type=tuple,

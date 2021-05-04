@@ -13,7 +13,7 @@ import logging
 from baselines.logger import HumanOutputFormat
 
 from level_replay import utils
-from level_replay.algo.policy import Rainbow, DDQN
+from level_replay.algo.policy import AtariAgent
 from level_replay.algo.buffer import make_buffer
 from level_replay.model import model_for_env_name
 from level_replay.file_writer import FileWriter
@@ -54,7 +54,7 @@ def train(args):
     env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
     args.num_actions = env.action_space.n
-    agent = DDQN(args)
+    agent = AtariAgent(args)
 
     num_updates = (args.T_max - args.start_timesteps) // args.train_freq
 
@@ -89,7 +89,7 @@ def train(args):
     episode_timesteps = 0
     episode_num = 0
 
-    for t in trange(num_steps):
+    for t in range(num_steps):
         episode_timesteps += 1
         action = None
         if t < args.start_timesteps or np.random.uniform() < epsilon(t):
@@ -117,7 +117,7 @@ def train(args):
         episode_start = False
 
         if done:
-            wandb.log({"Train Episode Returns": episode_reward})
+            wandb.log({"Train Episode Returns": episode_reward}, step=t)
             state, done = env.reset(), False
             state = (torch.FloatTensor(state)/255.).to(args.device)
             episode_start = True
