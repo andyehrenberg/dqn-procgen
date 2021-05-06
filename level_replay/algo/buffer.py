@@ -82,10 +82,11 @@ class Buffer(AbstractBuffer):
             self.seeds[self.ptr : self.ptr + n_transitions] = seeds
 
         if self.prioritized:
-            self.tree.set(self.ptr, self.max_priority)
+            for index in [i % self.max_size for i in range(self.ptr, n_transitions)]:
+                self.tree.set(index, self.max_priority)
 
         self.ptr = end
-        self.size = min(self.size + 1, self.max_size)
+        self.size = min(self.size + n_transitions, self.max_size)
 
     def sample(self):
         ind = (
@@ -94,24 +95,23 @@ class Buffer(AbstractBuffer):
             else np.random.randint(0, self.size, size=self.batch_size)
         )
 
-        batch = (
+        if self.prioritized:
+            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
+            weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
+            self.beta = min(self.beta + self.beta_stepper, 1)
+        else:
+            weights = torch.FloatTensor([1]).to(self.device)
+
+        return (
             torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
             torch.LongTensor(self.action[ind]).to(self.device),
             torch.FloatTensor(self.next_state[ind]).to(self.device) / 255.0,
             torch.FloatTensor(self.reward[ind]).to(self.device),
             torch.FloatTensor(self.not_done[ind]).to(self.device),
             torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
         )
-
-        if self.prioritized:
-            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
-            weights /= weights.max()
-            self.beta = min(self.beta + self.beta_stepper, 1)
-            batch += (ind, torch.FloatTensor(weights).to(self.device).reshape(-1, 1))
-        else:
-            batch += (ind, torch.FloatTensor([1]).to(self.device))
-
-        return batch
 
     def update_priority(self, ind, priority):
         self.max_priority = max(priority.max(), self.max_priority)
@@ -165,24 +165,23 @@ class AtariBuffer(AbstractBuffer):
             else np.random.randint(0, self.size, size=self.batch_size)
         )
 
-        batch = (
+        if self.prioritized:
+            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
+            weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
+            self.beta = min(self.beta + self.beta_stepper, 1)
+        else:
+            weights = torch.FloatTensor([1]).to(self.device)
+
+        return (
             torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
             torch.LongTensor(self.action[ind]).to(self.device),
             torch.FloatTensor(self.next_state[ind]).to(self.device) / 255.0,
             torch.FloatTensor(self.reward[ind]).to(self.device),
             torch.FloatTensor(self.not_done[ind]).to(self.device),
             torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
         )
-
-        if self.prioritized:
-            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
-            weights /= weights.max()
-            self.beta = min(self.beta + self.beta_stepper, 1)
-            batch += (ind, torch.FloatTensor(weights).to(self.device).reshape(-1, 1))
-        else:
-            batch += (ind, torch.FloatTensor([1]).to(self.device))
-
-        return batch
 
     def update_priority(self, ind, priority):
         self.max_priority = max(priority.max(), self.max_priority)
@@ -261,11 +260,9 @@ class SumTree(object):
 
 def make_buffer(args, num_updates, atari=False):
     if not atari:
-        replay_buffer = Buffer(
+        return Buffer(
             args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
         )
-    else:
-        replay_buffer = AtariBuffer(
-            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
-        )
-    return replay_buffer
+    return AtariBuffer(
+        args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
+    )
