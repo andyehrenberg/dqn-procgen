@@ -139,7 +139,7 @@ def eval_policy(args, policy, num_episodes=10):
         "frame_skip": 4,
         "frame_size": 84,
         "state_history": 4,
-        "done_on_life_loss": True,
+        "done_on_life_loss": False,
         "reward_clipping": True,
         "max_episode_timesteps": 27e3
     }
