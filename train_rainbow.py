@@ -135,7 +135,7 @@ def train(args, seeds):
                 episode_reward = info['episode']['r']
                 episode_rewards.append(episode_reward)
                 if args.wandb:
-                    wandb.log({"Train Episode Returns": episode_reward}, step=t*64)
+                    wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
@@ -161,7 +161,7 @@ def train(args, seeds):
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
             if args.wandb:
-                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t*64)
+                wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             if not args.wandb:
@@ -175,7 +175,7 @@ def train(args, seeds):
             if args.wandb:
                 wandb.log({
                 "Test Evaluation Returns": np.mean(eval_episode_rewards), "Train Evaluation Returns": np.mean(train_eval_episode_rewards)
-                }, step=t*64)
+                }, step=t * args.num_processes)
 
             else:
                 stats = {
