@@ -1,55 +1,49 @@
-import copy
+import logging
+import os
+from collections import deque
+from typing import List
+
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import copy
-import os
-import sys
-import time
-from collections import deque
-import timeit
-import logging
-from baselines.logger import HumanOutputFormat
+import wandb
 
 from level_replay import utils
-from level_replay.algo.policy import AtariAgent
 from level_replay.algo.buffer import make_buffer
-from level_replay.model import model_for_env_name
-from level_replay.file_writer import FileWriter
-from level_replay.envs import make_lr_venv
+from level_replay.algo.policy import AtariAgent
 from level_replay.atari_args import parser
-
-from tqdm import trange
-import wandb
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
 last_checkpoint_time = None
 
+
 def train(args):
     global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.device = torch.device("cuda:0" if args.cuda else "cpu")
-    if 'cuda' in args.device.type:
-        print('Using CUDA\n')
-    args.optimizer_parameters = {'lr': args.learning_rate,  'eps': args.adam_eps}
-
-    env_name = args.env_name
+    if "cuda" in args.device.type:
+        print("Using CUDA\n")
+    args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
 
     torch.set_num_threads(1)
     utils.seed(args.seed)
 
-    wandb.init(settings=wandb.Settings(start_method="fork"), project="atari", entity="andyehrenberg", config=vars(args))
+    wandb.init(
+        settings=wandb.Settings(start_method="fork"),
+        project="off-policy-procgen",
+        entity="ucl-dark",
+        config=vars(args),
+        tags=["atari"],
+    )
 
     atari_preprocessing = {
-		"frame_skip": 4,
-		"frame_size": 84,
-		"state_history": 4,
-		"done_on_life_loss": False,
-		"reward_clipping": True,
-		"max_episode_timesteps": 27e3
-	}
+        "frame_skip": 4,
+        "frame_size": 84,
+        "state_history": 4,
+        "done_on_life_loss": False,
+        "reward_clipping": True,
+        "max_episode_timesteps": 27e3,
+    }
 
     env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
@@ -60,18 +54,13 @@ def train(args):
 
     replay_buffer = make_buffer(args, num_updates, atari=True)
 
-    episode_rewards = deque(maxlen=10)
-
     episode_reward = 0
 
-    state_deque = deque(maxlen=args.multi_step)
-    reward_deque = deque(maxlen=args.multi_step)
-    action_deque = deque(maxlen=args.multi_step)
+    state_deque: deque = deque(maxlen=args.multi_step)
+    reward_deque: deque = deque(maxlen=args.multi_step)
+    action_deque: deque = deque(maxlen=args.multi_step)
 
     num_steps = int(args.T_max)
-
-    timer = timeit.default_timer
-    update_start_time = timer()
 
     loss, grad_magnitude = None, None
 
@@ -79,12 +68,14 @@ def train(args):
     epsilon_final = args.end_eps
     epsilon_decay = args.eps_decay_period
 
-    epsilon = lambda t: epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1. * (t - args.start_timesteps) / epsilon_decay)
+    def epsilon(t):
+        return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
+            -1.0 * (t - args.start_timesteps) / epsilon_decay
+        )
 
     state, done = env.reset(), False
-    state = (torch.FloatTensor(state)/255.).to(args.device)
+    state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
-    episode_start = True
     episode_reward = 0
     episode_timesteps = 0
     episode_num = 0
@@ -99,7 +90,7 @@ def train(args):
 
         # Perform action and log results
         next_state, reward, done, info = env.step(action)
-        next_state = (torch.FloatTensor(next_state)/255.).to(args.device)
+        next_state = (torch.FloatTensor(next_state) / 255.0).to(args.device)
         episode_reward += reward
 
         reward = info[0]
@@ -114,13 +105,11 @@ def train(args):
             replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), np.array([0]))
 
         state = next_state
-        episode_start = False
 
         if done:
             wandb.log({"Train Episode Returns": episode_reward}, step=t)
             state, done = env.reset(), False
-            state = (torch.FloatTensor(state)/255.).to(args.device)
-            episode_start = True
+            state = (torch.FloatTensor(state) / 255.0).to(args.device)
             episode_reward = 0
             episode_timesteps = 0
             episode_num += 1
@@ -134,6 +123,7 @@ def train(args):
             eval_episode_rewards = eval_policy(args, agent)
             wandb.log({"Evaluation Returns": np.mean(eval_episode_rewards)}, step=t)
 
+
 def eval_policy(args, policy, num_episodes=10):
     atari_preprocessing = {
         "frame_skip": 4,
@@ -141,14 +131,14 @@ def eval_policy(args, policy, num_episodes=10):
         "state_history": 4,
         "done_on_life_loss": False,
         "reward_clipping": True,
-        "max_episode_timesteps": 27e3
+        "max_episode_timesteps": 27e3,
     }
-    eval_env, _, _= utils.make_env(args.env_name, atari_preprocessing)
-    eval_env.seed(arg.seed + 100)
+    eval_env, _, _ = utils.make_env(args.env_name, atari_preprocessing, record_runs=True)
+    eval_env.seed(args.seed + 100)
 
-    eval_episode_rewards = []
+    eval_episode_rewards: List[float] = []
     state, done = eval_env.reset(), False
-    state = (torch.FloatTensor(state)/255.).to(args.device)
+    state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
     episode_returns = 0
 
@@ -159,26 +149,31 @@ def eval_policy(args, policy, num_episodes=10):
             with torch.no_grad():
                 action, _ = policy.select_action(state.unsqueeze(0), eval=True)
         state, reward, done, info = eval_env.step(action)
-        state = (torch.FloatTensor(state)/255.).to(args.device)
+        state = (torch.FloatTensor(state) / 255.0).to(args.device)
         episode_returns += reward
         if done:
             eval_episode_rewards.append(episode_returns)
             episode_returns = 0
             state, done = eval_env.reset(), False
-            state = (torch.FloatTensor(state)/255.).to(args.device)
+            state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
-    avg_reward = sum(eval_episode_rewards)/len(eval_episode_rewards)
+    for video in eval_env.get_videos():
+        wandb.log({"evaluation_behavior": video})
+
+    avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
 
     print("---------------------------------------")
     print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
     print("---------------------------------------")
     return eval_episode_rewards
 
+
 def multi_step_reward(rewards, gamma):
-    ret = 0.
+    ret = 0.0
     for idx, reward in enumerate(rewards):
         ret += reward * (gamma ** idx)
     return ret
+
 
 if __name__ == "__main__":
     args = parser.parse_args()

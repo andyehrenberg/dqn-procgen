@@ -1,10 +1,11 @@
 import copy
-import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import RainbowDQN, DQN, TwoNetworkDQN
+from level_replay.algo.dqn import DQN, RainbowDQN, TwoNetworkDQN
 from torch.nn.utils import clip_grad_norm_
+
 
 class Rainbow(object):
     def __init__(self, args):
@@ -13,7 +14,9 @@ class Rainbow(object):
         self.atoms = args.atoms
         self.V_min = args.V_min
         self.V_max = args.V_max
-        self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(device=args.device)  # Support (range) of z
+        self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(
+            device=args.device
+        )  # Support (range) of z
         self.delta_z = (args.V_max - args.V_min) / (self.atoms - 1)
         self.batch_size = args.batch_size
         self.n = args.multi_step
@@ -21,7 +24,9 @@ class Rainbow(object):
 
         self.Q = RainbowDQN(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
-        self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.parameters(), **args.optimizer_parameters
+        )
 
         self.discount = args.discount
 
@@ -30,7 +35,9 @@ class Rainbow(object):
         self.min_priority = args.min_priority
 
         # Target update rule
-        self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        self.maybe_update_target = (
+            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        )
         self.target_update_frequency = args.target_update
         self.tau = args.tau
 
@@ -64,12 +71,11 @@ class Rainbow(object):
             next_action = (next_Q * self.support).sum(2).argmax(1).reshape(-1, 1)
             pns = self.Q_target(next_state)
             pns_a = pns.gather(1, next_action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-            target_Q = (
-                reward.expand(-1, self.atoms) + done * (self.discount ** self.n) *
-                pns_a
-            )
+            target_Q = reward.expand(-1, self.atoms) + done * (self.discount ** self.n) * pns_a
 
-        current_Q = self.Q(state).gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
+        current_Q = (
+            self.Q(state).gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
+        )
 
         target_Q = target_Q.clamp(min=self.V_min, max=self.V_max)  # Clamp between supported values
         # Compute L2 projection of Tz onto fixed support z
@@ -80,9 +86,18 @@ class Rainbow(object):
 
         # Distribute probability of Tz
         m = state.new_zeros(self.batch_size, self.atoms)
-        offset = torch.linspace(0, ((self.batch_size - 1) * self.atoms), self.batch_size).unsqueeze(1).expand(self.batch_size, self.atoms).to(action)
-        m.view(-1).index_add_(0, (l + offset).view(-1), (pns_a * (u.float() - b)).view(-1))  # m_l = m_l + p(s_t+n, a*)(u - b)
-        m.view(-1).index_add_(0, (u + offset).view(-1), (pns_a * (b - l.float())).view(-1))  # m_u = m_u + p(s_t+n, a*)(b - l)
+        offset = (
+            torch.linspace(0, ((self.batch_size - 1) * self.atoms), self.batch_size)
+            .unsqueeze(1)
+            .expand(self.batch_size, self.atoms)
+            .to(action)
+        )
+        m.view(-1).index_add_(
+            0, (l + offset).view(-1), (pns_a * (u.float() - b)).view(-1)
+        )  # m_l = m_l + p(s_t+n, a*)(u - b)
+        m.view(-1).index_add_(
+            0, (u + offset).view(-1), (pns_a * (b - l.float())).view(-1)
+        )  # m_u = m_u + p(s_t+n, a*)(b - l)
 
         loss = -torch.sum(m * log_p1s_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
         self.Q.zero_grad()
@@ -106,7 +121,7 @@ class Rainbow(object):
 
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
-             self.Q_target.load_state_dict(self.Q.state_dict())
+            self.Q_target.load_state_dict(self.Q.state_dict())
 
     def save(self, filename):
         torch.save(self.iterations, filename + "iterations")
@@ -118,6 +133,7 @@ class Rainbow(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
+
 
 class DDQN(object):
     def __init__(self, args):
@@ -129,7 +145,9 @@ class DDQN(object):
 
         self.Q = DQN(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
-        self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.parameters(), **args.optimizer_parameters
+        )
 
         self.discount = args.discount
         self.PER = args.PER
@@ -139,7 +157,9 @@ class DDQN(object):
         self.min_priority = args.min_priority
 
         # Target update rule
-        self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        self.maybe_update_target = (
+            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        )
         self.target_update_frequency = args.target_update
         self.tau = args.tau
 
@@ -162,22 +182,23 @@ class DDQN(object):
             action = q.argmax(1).reshape(-1, 1)
             return action, None
 
-
     def train(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done*(self.discount**self.n_step)*self.Q_target(next_state).gather(1, next_action)
+            target_Q = reward + not_done * (self.discount ** self.n_step) * self.Q_target(next_state).gather(
+                1, next_action
+            )
 
         current_Q = self.Q(state).gather(1, action)
 
-        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction='none')).mean()
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
 
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
         grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
-        #clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        # clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
 
         # Update target network by polyak or full copy every X iterations.
@@ -199,7 +220,7 @@ class DDQN(object):
 
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
-             self.Q_target.load_state_dict(self.Q.state_dict())
+            self.Q_target.load_state_dict(self.Q.state_dict())
 
     def save(self, filename):
         torch.save(self.iterations, filename + "iterations")
@@ -212,25 +233,26 @@ class DDQN(object):
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
 
+
 class Conv_Q(nn.Module):
-	def __init__(self, frames, num_actions):
-		super(Conv_Q, self).__init__()
-		self.c1 = nn.Conv2d(frames, 32, kernel_size=8, stride=4)
-		self.c2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-		self.c3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-		self.l1 = nn.Linear(3136, 512)
-		self.l2 = nn.Linear(512, num_actions)
+    def __init__(self, frames, num_actions):
+        super(Conv_Q, self).__init__()
+        self.c1 = nn.Conv2d(frames, 32, kernel_size=8, stride=4)
+        self.c2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.c3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.l1 = nn.Linear(3136, 512)
+        self.l2 = nn.Linear(512, num_actions)
 
+    def forward(self, state):
+        q = F.relu(self.c1(state))
+        q = F.relu(self.c2(q))
+        q = F.relu(self.c3(q))
+        q = F.relu(self.l1(q.reshape(-1, 3136)))
+        return self.l2(q)
 
-	def forward(self, state):
-		q = F.relu(self.c1(state))
-		q = F.relu(self.c2(q))
-		q = F.relu(self.c3(q))
-		q = F.relu(self.l1(q.reshape(-1, 3136)))
-		return self.l2(q)
 
 class AtariAgent(object):
-    #Doesn't use IMPALA features
+    # Doesn't use IMPALA features
     def __init__(self, args):
         self.device = args.device
         self.action_space = args.num_actions
@@ -240,7 +262,9 @@ class AtariAgent(object):
 
         self.Q = Conv_Q(4, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
-        self.Q_optimizer = getattr(torch.optim, args.optimizer)(self.Q.parameters(), **args.optimizer_parameters)
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.parameters(), **args.optimizer_parameters
+        )
 
         self.discount = args.discount
         self.PER = args.PER
@@ -250,7 +274,9 @@ class AtariAgent(object):
         self.min_priority = args.min_priority
 
         # Target update rule
-        self.maybe_update_target = self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        self.maybe_update_target = (
+            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        )
         self.target_update_frequency = args.target_update
         self.tau = args.tau
 
@@ -273,22 +299,23 @@ class AtariAgent(object):
             action = q.argmax(1).reshape(-1, 1)
             return action, None
 
-
     def train(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done*(self.discount**self.n_step)*self.Q_target(next_state).gather(1, next_action)
+            target_Q = reward + not_done * (self.discount ** self.n_step) * self.Q_target(next_state).gather(
+                1, next_action
+            )
 
         current_Q = self.Q(state).gather(1, action)
 
-        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction='none')).mean()
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
 
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
         grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
-        #clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        # clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
 
         # Update target network by polyak or full copy every X iterations.
@@ -310,7 +337,7 @@ class AtariAgent(object):
 
     def copy_target_update(self):
         if self.iterations % self.target_update_frequency == 0:
-             self.Q_target.load_state_dict(self.Q.state_dict())
+            self.Q_target.load_state_dict(self.Q.state_dict())
 
     def save(self, filename):
         torch.save(self.iterations, filename + "iterations")

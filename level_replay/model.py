@@ -1,5 +1,5 @@
 # Copyright (c) 2017 Ilya Kostrikov
-# 
+#
 # Licensed under the MIT License;
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -19,14 +19,14 @@ from level_replay.utils import init
 from level_replay.envs import PROCGEN_ENVS
 
 
-init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                        constant_(x, 0))
+init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
 
-init_relu_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                        constant_(x, 0), nn.init.calculate_gain('relu'))
+init_relu_ = lambda m: init(
+    m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), nn.init.calculate_gain("relu")
+)
 
-init_tanh_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                        constant_(x, 0), np.sqrt(2))
+init_tanh_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2))
+
 
 def apply_init_(modules):
     """
@@ -46,15 +46,15 @@ def apply_init_(modules):
 def model_for_env_name(args, env):
     if args.env_name in PROCGEN_ENVS:
         model = Policy(
-            env.observation_space.shape, env.action_space.n,
+            env.observation_space.shape,
+            env.action_space.n,
             arch=args.arch,
-            base_kwargs={'recurrent': False, 'hidden_size': args.hidden_size})
-    elif args.env_name.startswith('MiniGrid'):
-        model = MinigridPolicy(
-            env.observation_space.shape, env.action_space.n,
-            arch=args.arch)
+            base_kwargs={"recurrent": False, "hidden_size": args.hidden_size},
+        )
+    elif args.env_name.startswith("MiniGrid"):
+        model = MinigridPolicy(env.observation_space.shape, env.action_space.n, arch=args.arch)
     else:
-        raise ValueError(f'Unsupported env {env}')
+        raise ValueError(f"Unsupported env {env}")
 
     return model
 
@@ -63,6 +63,7 @@ class Flatten(nn.Module):
     """
     Flatten a tensor
     """
+
     def forward(self, x):
         return x.reshape(x.size(0), -1)
 
@@ -71,6 +72,7 @@ class Conv2d_tf(nn.Conv2d):
     """
     Conv2d with the padding behavior from TF
     """
+
     def __init__(self, *args, **kwargs):
         super(Conv2d_tf, self).__init__(*args, **kwargs)
         self.padding = kwargs.get("padding", "SAME")
@@ -80,9 +82,7 @@ class Conv2d_tf(nn.Conv2d):
         filter_size = self.weight.size(dim + 2)
         effective_filter_size = (filter_size - 1) * self.dilation[dim] + 1
         out_size = (input_size + self.stride[dim] - 1) // self.stride[dim]
-        total_padding = max(
-            0, (out_size - 1) * self.stride[dim] + effective_filter_size - input_size
-        )
+        total_padding = max(0, (out_size - 1) * self.stride[dim] + effective_filter_size - input_size)
         additional_padding = int(total_padding % 2 != 0)
 
         return additional_padding, total_padding
@@ -116,16 +116,17 @@ class Conv2d_tf(nn.Conv2d):
 
 class Policy(nn.Module):
     """
-    Actor-Critic module 
+    Actor-Critic module
     """
-    def __init__(self, obs_shape, num_actions, arch='small', base_kwargs=None):
+
+    def __init__(self, obs_shape, num_actions, arch="small", base_kwargs=None):
         super(Policy, self).__init__()
-        
+
         if base_kwargs is None:
             base_kwargs = {}
-        
+
         if len(obs_shape) == 3:
-            if arch == 'small':
+            if arch == "small":
                 base = SmallNetBase
             else:
                 base = ResNetBase
@@ -180,6 +181,7 @@ class NNBase(nn.Module):
     """
     Actor-Critic network (base class)
     """
+
     def __init__(self, recurrent, recurrent_input_size, hidden_size):
         super(NNBase, self).__init__()
 
@@ -189,9 +191,9 @@ class NNBase(nn.Module):
         if recurrent:
             self.gru = nn.GRU(recurrent_input_size, hidden_size)
             for name, param in self.gru.named_parameters():
-                if 'bias' in name:
+                if "bias" in name:
                     nn.init.constant_(param, 0)
-                elif 'weight' in name:
+                elif "weight" in name:
                     nn.init.orthogonal_(param)
 
     @property
@@ -226,11 +228,7 @@ class NNBase(nn.Module):
 
             # Let's figure out which steps in the sequence have a zero for any agent
             # We will always assume t=0 has a zero in it as that makes the logic cleaner
-            has_zeros = ((masks[1:] == 0.0) \
-                            .any(dim=-1)
-                            .nonzero()
-                            .squeeze()
-                            .cpu())
+            has_zeros = (masks[1:] == 0.0).any(dim=-1).nonzero().squeeze().cpu()
 
             # +1 to correct the masks[1:]
             if has_zeros.dim() == 0:
@@ -250,9 +248,7 @@ class NNBase(nn.Module):
                 start_idx = has_zeros[i]
                 end_idx = has_zeros[i + 1]
 
-                rnn_scores, hxs = self.gru(
-                    x[start_idx:end_idx],
-                    hxs * masks[start_idx].view(1, -1, 1))
+                rnn_scores, hxs = self.gru(x[start_idx:end_idx], hxs * masks[start_idx].view(1, -1, 1))
 
                 outputs.append(rnn_scores)
 
@@ -270,6 +266,7 @@ class MLPBase(NNBase):
     """
     Multi-Layer Perceptron
     """
+
     def __init__(self, num_inputs, recurrent=False, hidden_size=64):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
@@ -277,12 +274,18 @@ class MLPBase(NNBase):
             num_inputs = hidden_size
 
         self.actor = nn.Sequential(
-            init_tanh_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_tanh_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            init_tanh_(nn.Linear(num_inputs, hidden_size)),
+            nn.Tanh(),
+            init_tanh_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+        )
 
         self.critic = nn.Sequential(
-            init_tanh_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_tanh_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            init_tanh_(nn.Linear(num_inputs, hidden_size)),
+            nn.Tanh(),
+            init_tanh_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+        )
 
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
@@ -304,12 +307,13 @@ class BasicBlock(nn.Module):
     """
     Residual Network Block
     """
+
     def __init__(self, n_channels, stride=1):
         super(BasicBlock, self).__init__()
 
-        self.conv1 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1,1))
+        self.conv1 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1,1))
+        self.conv2 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
         self.stride = stride
 
         apply_init_(self.modules())
@@ -330,9 +334,10 @@ class BasicBlock(nn.Module):
 
 class ResNetBase(NNBase):
     """
-    Residual Network 
+    Residual Network
     """
-    def __init__(self, num_inputs, recurrent=False, hidden_size=256, channels=[16,32,32]):
+
+    def __init__(self, num_inputs, recurrent=False, hidden_size=256, channels=[16, 32, 32]):
         super(ResNetBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         self.layer1 = self._make_layer(num_inputs, channels[0])
@@ -378,8 +383,9 @@ class ResNetBase(NNBase):
 
 class SmallNetBase(NNBase):
     """
-    Residual Network 
+    Residual Network
     """
+
     def __init__(self, num_inputs, recurrent=False, hidden_size=256):
         super(SmallNetBase, self).__init__(recurrent, num_inputs, hidden_size)
 
@@ -412,15 +418,16 @@ class SmallNetBase(NNBase):
 
 class MinigridPolicy(nn.Module):
     """
-    Actor-Critic module 
+    Actor-Critic module
     """
-    def __init__(self, obs_shape, num_actions, arch='small', base_kwargs=None):
+
+    def __init__(self, obs_shape, num_actions, arch="small", base_kwargs=None):
         super(MinigridPolicy, self).__init__()
-        
+
         if base_kwargs is None:
             base_kwargs = {}
-        
-        final_channels = 32 if arch == 'small' else 64
+
+        final_channels = 32 if arch == "small" else 64
 
         self.image_conv = nn.Sequential(
             nn.Conv2d(3, 16, (2, 2)),
@@ -429,11 +436,11 @@ class MinigridPolicy(nn.Module):
             nn.Conv2d(16, 32, (2, 2)),
             nn.ReLU(),
             nn.Conv2d(32, final_channels, (2, 2)),
-            nn.ReLU()
+            nn.ReLU(),
         )
         n = obs_shape[-2]
         m = obs_shape[-1]
-        self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*final_channels
+        self.image_embedding_size = ((n - 1) // 2 - 2) * ((m - 1) // 2 - 2) * final_channels
         self.embedding_size = self.image_embedding_size
 
         # Define actor's model
@@ -444,9 +451,7 @@ class MinigridPolicy(nn.Module):
 
         # Define critic's model
         self.critic = nn.Sequential(
-            init_tanh_(nn.Linear(self.embedding_size, 64)),
-            nn.Tanh(),
-            init_(nn.Linear(64, 1))
+            init_tanh_(nn.Linear(self.embedding_size, 64)), nn.Tanh(), init_(nn.Linear(64, 1))
         )
 
         self.dist = Categorical(64, num_actions)
