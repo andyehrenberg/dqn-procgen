@@ -63,9 +63,7 @@ class FileWriter:
     ):
         if not xpid:
             # Make unique id.
-            xpid = "{proc}_{unixtime}".format(
-                proc=os.getpid(), unixtime=int(time.time())
-            )
+            xpid = "{proc}_{unixtime}".format(proc=os.getpid(), unixtime=int(time.time()))
         self.xpid = xpid
         self._tick = 0
 
@@ -118,22 +116,18 @@ class FileWriter:
             fields="{base}/fields.csv".format(base=self.basepath),
             meta="{base}/meta.json".format(base=self.basepath),
             level_weights="{base}/level_weights.csv".format(base=self.basepath),
-            final_test_eval="{base}/final_test_eval.csv".format(base=self.basepath)
+            final_test_eval="{base}/final_test_eval.csv".format(base=self.basepath),
         )
 
         self._logger.info("Saving arguments to %s", self.paths["meta"])
         if os.path.exists(self.paths["meta"]):
-            self._logger.warning(
-                "Path to meta file already exists. " "Not overriding meta."
-            )
+            self._logger.warning("Path to meta file already exists. " "Not overriding meta.")
         else:
             self._save_metadata()
 
         self._logger.info("Saving messages to %s", self.paths["msg"])
         if os.path.exists(self.paths["msg"]):
-            self._logger.warning(
-                "Path to message file already exists. " "New data will be appended."
-            )
+            self._logger.warning("Path to message file already exists. " "New data will be appended.")
 
         fhandle = logging.FileHandler(self.paths["msg"])
         fhandle.setFormatter(formatter)
@@ -142,11 +136,9 @@ class FileWriter:
         self._logger.info("Saving logs data to %s", self.paths["logs"])
         self._logger.info("Saving logs' fields to %s", self.paths["fields"])
         self.fieldnames = ["_tick", "_time"]
-        self.final_test_eval_fieldnames = ['num_test_seeds', 'mean_episode_return', 'median_episode_return']
+        self.final_test_eval_fieldnames = ["num_test_seeds", "mean_episode_return", "median_episode_return"]
         if os.path.exists(self.paths["logs"]):
-            self._logger.warning(
-                "Path to log file already exists. " "New data will be appended."
-            )
+            self._logger.warning("Path to log file already exists. " "New data will be appended.")
             # Override default fieldnames.
             with open(self.paths["fields"], "r") as csvfile:
                 reader = csv.reader(csvfile)
@@ -170,7 +162,9 @@ class FileWriter:
         self._levelweightsfile = open(self.paths["level_weights"], "a")
         self._levelweightswriter = csv.writer(self._levelweightsfile)
         self._finaltestfile = open(self.paths["final_test_eval"], "a")
-        self._finaltestwriter = csv.DictWriter(self._finaltestfile, fieldnames=self.final_test_eval_fieldnames)
+        self._finaltestwriter = csv.DictWriter(
+            self._finaltestfile, fieldnames=self.final_test_eval_fieldnames
+        )
 
         self._levelweightsfile.write("# %s\n" % ",".join(self.seeds))
         self._levelweightsfile.flush()
@@ -215,9 +209,7 @@ class FileWriter:
         self._finaltestfile.flush()
 
     def close(self, successful: bool = True) -> None:
-        self.metadata["date_end"] = datetime.datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S.%f"
-        )
+        self.metadata["date_end"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         self.metadata["successful"] = successful
         self._save_metadata()
 

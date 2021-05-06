@@ -1,15 +1,9 @@
-import copy
 import logging
 import os
-import sys
-import time
-import timeit
 from collections import deque
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 from baselines.logger import HumanOutputFormat
 from tqdm import trange
@@ -34,8 +28,6 @@ def train(args):
     if "cuda" in args.device.type:
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
-
-    env_name = args.env_name
 
     torch.set_num_threads(1)
     utils.seed(args.seed)
@@ -65,8 +57,6 @@ def train(args):
 
     replay_buffer = make_buffer(args, num_updates, atari=True)
 
-    episode_rewards = deque(maxlen=10)
-
     episode_reward = 0
 
     state_deque = deque(maxlen=args.multi_step)
@@ -75,23 +65,20 @@ def train(args):
 
     num_steps = int(args.T_max)
 
-    timer = timeit.default_timer
-    update_start_time = timer()
-
     loss, grad_magnitude = None, None
 
     epsilon_start = args.initial_eps
     epsilon_final = args.end_eps
     epsilon_decay = args.eps_decay_period
 
-    epsilon = lambda t: epsilon_final + (epsilon_start - epsilon_final) * np.exp(
-        -1.0 * (t - args.start_timesteps) / epsilon_decay
-    )
+    def epsilon(t):
+        return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
+            -1.0 * (t - args.start_timesteps) / epsilon_decay
+        )
 
     state, done = env.reset(), False
     state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
-    episode_start = True
     episode_reward = 0
     episode_timesteps = 0
     episode_num = 0
@@ -121,13 +108,11 @@ def train(args):
             replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), np.array([0]))
 
         state = next_state
-        episode_start = False
 
         if done:
             wandb.log({"Train Episode Returns": episode_reward}, step=t)
             state, done = env.reset(), False
             state = (torch.FloatTensor(state) / 255.0).to(args.device)
-            episode_start = True
             episode_reward = 0
             episode_timesteps = 0
             episode_num += 1
@@ -152,7 +137,7 @@ def eval_policy(args, policy, num_episodes=10):
         "max_episode_timesteps": 27e3,
     }
     eval_env, _, _ = utils.make_env(args.env_name, atari_preprocessing)
-    eval_env.seed(arg.seed + 100)
+    eval_env.seed(args.seed + 100)
 
     eval_episode_rewards = []
     state, done = eval_env.reset(), False
