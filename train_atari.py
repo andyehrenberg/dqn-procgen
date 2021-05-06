@@ -30,9 +30,10 @@ def train(args):
 
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
-        project="atari",
-        entity="andyehrenberg",
+        project="off-policy-procgen",
+        entity="ucl-dark",
         config=vars(args),
+        tags=["atari"],
     )
 
     atari_preprocessing = {

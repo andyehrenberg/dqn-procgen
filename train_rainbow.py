@@ -1,16 +1,16 @@
 import logging
-from typing import List
 import os
 import sys
 import time
 from collections import deque
+from typing import List
 
 import numpy as np
 import torch
 import wandb
-from baselines.logger import HumanOutputFormat
 from tqdm import trange
 
+from baselines.logger import HumanOutputFormat
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN
@@ -55,9 +55,10 @@ def train(args, seeds):
     else:
         wandb.init(
             settings=wandb.Settings(start_method="fork"),
-            project="test",
-            entity="andyehrenberg",
+            project="off-policy-procgen",
+            entity="ucl-dark",
             config=vars(args),
+            tags=["ddqn", "procgen"],
         )
 
     start_level = 0
