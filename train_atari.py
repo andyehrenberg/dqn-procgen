@@ -1,20 +1,16 @@
 import logging
 import os
 from collections import deque
+from typing import List
 
 import numpy as np
 import torch
 import wandb
-from baselines.logger import HumanOutputFormat
-from tqdm import trange
 
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import AtariAgent
 from level_replay.atari_args import parser
-from level_replay.envs import make_lr_venv
-from level_replay.file_writer import FileWriter
-from level_replay.model import model_for_env_name
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -59,9 +55,9 @@ def train(args):
 
     episode_reward = 0
 
-    state_deque = deque(maxlen=args.multi_step)
-    reward_deque = deque(maxlen=args.multi_step)
-    action_deque = deque(maxlen=args.multi_step)
+    state_deque: deque = deque(maxlen=args.multi_step)
+    reward_deque: deque = deque(maxlen=args.multi_step)
+    action_deque: deque = deque(maxlen=args.multi_step)
 
     num_steps = int(args.T_max)
 
@@ -136,10 +132,10 @@ def eval_policy(args, policy, num_episodes=10):
         "reward_clipping": True,
         "max_episode_timesteps": 27e3,
     }
-    eval_env, _, _ = utils.make_env(args.env_name, atari_preprocessing)
+    eval_env, _, _ = utils.make_env(args.env_name, atari_preprocessing, record_runs=True)
     eval_env.seed(args.seed + 100)
 
-    eval_episode_rewards = []
+    eval_episode_rewards: List[float] = []
     state, done = eval_env.reset(), False
     state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
@@ -159,6 +155,9 @@ def eval_policy(args, policy, num_episodes=10):
             episode_returns = 0
             state, done = eval_env.reset(), False
             state = (torch.FloatTensor(state) / 255.0).to(args.device)
+
+    for video in eval_env.get_videos():
+        wandb.log({"evaluation_behavior": video})
 
     avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
 

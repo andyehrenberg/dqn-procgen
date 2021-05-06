@@ -3,7 +3,6 @@ from typing import List
 import os
 import sys
 import time
-import timeit
 from collections import deque
 
 import numpy as np
@@ -14,12 +13,10 @@ from tqdm import trange
 
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import DDQN, Rainbow
+from level_replay.algo.policy import DDQN
 from level_replay.dqn_args import parser
 from level_replay.envs import make_lr_venv
 from level_replay.file_writer import FileWriter
-from level_replay.model import model_for_env_name
-from level_replay.storage import RolloutStorage
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -270,6 +267,7 @@ def eval_policy(
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
         level_sampler=level_sampler,
+        record_runs=True,
     )
 
     eval_episode_rewards: List[float] = []
@@ -294,6 +292,9 @@ def eval_policy(
                 eval_episode_rewards.append(info["episode"]["r"])
                 if progressbar:
                     progressbar.update(1)
+
+    for video in eval_envs.get_videos():
+        wandb.log({"evaluation_behaviour": video})
 
     eval_envs.close()
     if progressbar:

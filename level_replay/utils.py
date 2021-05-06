@@ -16,6 +16,8 @@ import gym
 import cv2
 import numpy as np
 
+from level_replay.envs import VideoWrapper
+
 
 class DotDict(dict):
     __getattr__ = dict.__getitem__
@@ -104,7 +106,7 @@ class Timings:
 
         result = prefix
         for k in sorted(means, key=means.get, reverse=True):
-            result += f"\n    %s: %.6fms +- %.6fms (%.2f%%) " % (
+            result += "\n    %s: %.6fms +- %.6fms (%.2f%%) " % (
                 k,
                 1000 * means[k],
                 1000 * stds[k],
@@ -204,9 +206,11 @@ class AtariPreprocessing(object):
 
 
 # Create environment, add wrapper if necessary and create env_properties
-def make_env(env_name, atari_preprocessing):
+def make_env(env_name, atari_preprocessing, record_runs=False):
     env = gym.make(env_name)
 
+    if record_runs:
+        env = VideoWrapper(env, log_videos=False)
     env = AtariPreprocessing(env, **atari_preprocessing)
 
     state_dim = (
