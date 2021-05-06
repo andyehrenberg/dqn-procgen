@@ -1,8 +1,11 @@
 from __future__ import division
+
 import math
+
 import torch
 from torch import nn
 from torch.nn import functional as F
+
 
 def apply_init_(modules):
     for m in modules:
@@ -14,6 +17,7 @@ def apply_init_(modules):
             nn.init.constant_(m.weight, 1)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+
 
 class Flatten(nn.Module):
     def forward(self, x):
@@ -36,25 +40,29 @@ class Conv2d_tf(nn.Conv2d):
 
     def forward(self, input):
         if self.padding == "VALID":
-            return F.conv2d(input,
-                            self.weight,
-                            self.bias,
-                            self.stride,
-                            padding=0,
-                            dilation=self.dilation,
-                            groups=self.groups)
+            return F.conv2d(
+                input,
+                self.weight,
+                self.bias,
+                self.stride,
+                padding=0,
+                dilation=self.dilation,
+                groups=self.groups,
+            )
         rows_odd, padding_rows = self._compute_padding(input, dim=0)
         cols_odd, padding_cols = self._compute_padding(input, dim=1)
         if rows_odd or cols_odd:
             input = F.pad(input, [0, cols_odd, 0, rows_odd])
 
-        return F.conv2d(input,
-                        self.weight,
-                        self.bias,
-                        self.stride,
-                        padding=(padding_rows // 2, padding_cols // 2),
-                        dilation=self.dilation,
-                        groups=self.groups)
+        return F.conv2d(
+            input,
+            self.weight,
+            self.bias,
+            self.stride,
+            padding=(padding_rows // 2, padding_cols // 2),
+            dilation=self.dilation,
+            groups=self.groups,
+        )
 
 
 class ResidualBlock(nn.Module):
@@ -89,6 +97,7 @@ class ImpalaCNN(nn.Module):
     num_inputs : `int`
         Number of channels in the input image.
     """
+
     def __init__(self, num_inputs, channels=[16, 32, 32]):
         super(ImpalaCNN, self).__init__()
 
@@ -134,10 +143,10 @@ class NoisyLinear(nn.Module):
         self.std_init = std_init
         self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
         self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
-        self.register_buffer('weight_epsilon', torch.empty(out_features, in_features))
+        self.register_buffer("weight_epsilon", torch.empty(out_features, in_features))
         self.bias_mu = nn.Parameter(torch.empty(out_features))
         self.bias_sigma = nn.Parameter(torch.empty(out_features))
-        self.register_buffer('bias_epsilon', torch.empty(out_features))
+        self.register_buffer("bias_epsilon", torch.empty(out_features))
         self.reset_parameters()
         self.reset_noise()
 
@@ -160,7 +169,11 @@ class NoisyLinear(nn.Module):
 
     def forward(self, input):
         if self.training:
-            return F.linear(input, self.weight_mu + self.weight_sigma * self.weight_epsilon, self.bias_mu + self.bias_sigma * self.bias_epsilon)
+            return F.linear(
+                input,
+                self.weight_mu + self.weight_sigma * self.weight_epsilon,
+                self.bias_mu + self.bias_sigma * self.bias_epsilon,
+            )
         else:
             return F.linear(input, self.weight_mu, self.bias_mu)
 
@@ -188,14 +201,15 @@ class RainbowDQN(nn.Module):
         if log:  # Use log softmax for numerical stability
             q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension
         else:
-            q = F.softmax(q, dim=2) # Probabilities with action over second dimension
+            q = F.softmax(q, dim=2)  # Probabilities with action over second dimension
 
         return q
 
     def reset_noise(self):
         for name, module in self.named_children():
-            if 'fc' in name:
+            if "fc" in name:
                 module.reset_noise()
+
 
 class DQN(nn.Module):
     def __init__(self, args, action_space):
@@ -204,7 +218,7 @@ class DQN(nn.Module):
 
         self.features = ImpalaCNN(args.state_dim[0])
         if args.state_dim != (3, 64, 64):
-            example_state = torch.randn((1,)+args.state_dim)
+            example_state = torch.randn((1,) + args.state_dim)
             self.conv_output_size = self.features(example_state).shape[1]
         else:
             self.conv_output_size = 2048
@@ -218,9 +232,16 @@ class DQN(nn.Module):
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
         advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
-        value, advantage = value.view(-1, 1,), advantage.view(-1, self.action_space)
-        q = value + advantage - advantage.mean(1, keepdim=True) # Combine streams
+        value, advantage = (
+            value.view(
+                -1,
+                1,
+            ),
+            advantage.view(-1, self.action_space),
+        )
+        q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
         return q
+
 
 class TwoNetworkDQN(nn.Module):
     def __init__(self, args, action_space):
@@ -240,6 +261,12 @@ class TwoNetworkDQN(nn.Module):
         advantage_x = self.advantage_features(x)
         value = self.value_fc2(F.relu(self.value_fc1(value_x)))
         advantage = self.advantage_fc2(F.relu(self.advantage_fc2(advantage_x)))
-        value, advantage = value.view(-1, 1,), advantage.view(-1, self.action_space)
+        value, advantage = (
+            value.view(
+                -1,
+                1,
+            ),
+            advantage.view(-1, self.action_space),
+        )
         q = value + advantage - advantage.mean(1, keepdim=True)
         return q
