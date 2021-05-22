@@ -22,7 +22,6 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 last_checkpoint_time = None
 
-
 def train(args, seeds):
     global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -30,6 +29,7 @@ def train(args, seeds):
     if "cuda" in args.device.type:
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
+    args.seeds = seeds
 
     torch.set_num_threads(1)
 
@@ -61,7 +61,7 @@ def train(args, seeds):
             tags=["ddqn", "procgen"],
         )
 
-    start_level = 0
+    args.start_level = 0
 
     level_sampler_args = dict(
         num_actors=args.num_processes,
@@ -83,7 +83,7 @@ def train(args, seeds):
         seeds=seeds,
         device=args.device,
         num_levels=args.num_levels,
-        start_level=start_level,
+        start_level=args.start_level,
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
@@ -125,6 +125,10 @@ def train(args, seeds):
         return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
+
+    barchart_plot_timesteps = [int(i*num_steps/10) for i in range(1, 10)]
+    barchart_counter = 0
+    next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
     for t in trange(num_steps):
         action = None
@@ -178,6 +182,16 @@ def train(args, seeds):
                 wandb.log(
                     {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
                 )
+
+        if t == next_barchart_timestep or t == num_steps - 1:
+            if args.wandb:
+                count_data = [[seed, count] for (seed, count) in zip(agent.seed_counts.keys(), agent.seed_counts.values())]
+                table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
+                wandb.log(
+                    {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Level", "Count", title = "Sampling distribution of levels")}
+                )
+            barchart_counter = barchart_counter + 1 if barchart_counter < len(barchart_plot_timesteps) - 1 else barchart_counter
+            next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             if not args.wandb:

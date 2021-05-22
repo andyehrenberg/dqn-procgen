@@ -173,6 +173,9 @@ class DDQN(object):
         self.eval_eps = args.eval_eps
         self.num_actions = args.num_actions
 
+        # For seed bar chart
+        self.seed_counts = {i : 0 for i in args.seeds}
+
         # Number of training iterations
         self.iterations = 0
 
@@ -184,6 +187,9 @@ class DDQN(object):
 
     def train(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+
+        for seed in seeds:
+            self.seed_counts[seed] = self.seed_counts.get(seed, 0) + 1
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
