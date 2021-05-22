@@ -63,7 +63,6 @@ def train(args, seeds):
 
     start_level = 0
 
-    num_levels = 1
     level_sampler_args = dict(
         num_actors=args.num_processes,
         strategy=args.level_replay_strategy,
@@ -83,7 +82,7 @@ def train(args, seeds):
         env_name=args.env_name,
         seeds=seeds,
         device=args.device,
-        num_levels=num_levels,
+        num_levels=args.num_levels,
         start_level=start_level,
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
@@ -188,7 +187,7 @@ def train(args, seeds):
             if not args.wandb:
                 logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = eval_policy(
-                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
+                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_levels, seeds=seeds
             )
 
             if args.wandb:
@@ -245,7 +244,7 @@ def eval_policy(
     args,
     policy,
     num_episodes,
-    num_processes=1,
+    num_processes=8,
     deterministic=False,
     start_level=0,
     num_levels=0,

@@ -15,7 +15,7 @@ parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max t
 # Model parameters
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
 parser.add_argument("--num_actions", type=int, default=15, help="Action space dimension")
-parser.add_argument("--state_dim", type=tuple, default=(3, 64, 64))
+parser.add_argument("--state_dim", type=tuple, default=(3, 64, 64))  # type: ignore
 parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
 parser.add_argument("--discount", type=float, default=0.99, help="Discount factor on future returns")
 parser.add_argument("--adam_eps", type=float, default=1.5e-4)
@@ -60,6 +60,7 @@ parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, he
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)
+parser.add_argument("--num_levels", type=int, default=200, help="Number of training levels")
 parser.add_argument("--env_name", default="starpilot")
 parser.add_argument("--distribution_mode", default="easy")
 parser.add_argument("--paint_vel_info", type=lambda x: bool(strtobool(x)), default=False)
