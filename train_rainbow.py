@@ -200,7 +200,7 @@ def train(args, seeds):
             if not args.wandb:
                 logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = eval_policy(
-                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_levels, seeds=seeds
+                args, agent, args.num_test_seeds, start_level=0, num_levels=1, seeds=seeds
             )
 
             if args.wandb:
