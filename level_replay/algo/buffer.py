@@ -82,7 +82,7 @@ class Buffer(AbstractBuffer):
             self.seeds[self.ptr : self.ptr + n_transitions] = seeds
 
         if self.prioritized:
-            for index in [i % self.max_size for i in range(self.ptr, n_transitions)]:
+            for index in [i % self.max_size for i in range(self.ptr, self.ptr + n_transitions)]:
                 self.tree.set(index, self.max_priority)
 
         self.ptr = end

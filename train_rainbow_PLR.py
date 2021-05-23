@@ -35,18 +35,46 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
-    wandb.init(
-        settings=wandb.Settings(start_method="fork"),
-        project="off-policy-procgen",
-        entity="ucl-dark",
-        config=vars(args),
-        tags=["ddqn", "procgen"],
-    )
+    # Configure logging
+    if not args.wandb:
+        if args.xpid is None:
+            args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
+        log_dir = os.path.expandvars(os.path.expanduser(args.log_dir))
+        plogger = FileWriter(
+            xpid=args.xpid,
+            xp_args=args.__dict__,
+            rootdir=log_dir,
+            seeds=seeds,
+        )
+        _ = HumanOutputFormat(sys.stdout)
+
+        # checkpointpath = os.path.expandvars(
+        # os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar"))
+        # )
+
+    else:
+        wandb.init(
+            settings=wandb.Settings(start_method="fork"),
+            project="off-policy-procgen",
+            entity="ucl-dark",
+            config=vars(args),
+            tags=["ddqn", "procgen"],
+        )
 
     num_levels = 1
     level_sampler_args = dict(
         num_actors=args.num_processes,
         strategy=args.level_replay_strategy,
+        replay_schedule=args.level_replay_schedule,
+        score_transform=args.level_replay_score_transform,
+        temperature=args.level_replay_temperature,
+        eps=args.level_replay_eps,
+        rho=args.level_replay_rho,
+        nu=args.level_replay_nu,
+        alpha=args.level_replay_alpha,
+        staleness_coef=args.staleness_coef,
+        staleness_transform=args.staleness_transform,
+        staleness_temperature=args.staleness_temperature,
     )
     envs, level_sampler = make_lr_venv(
         num_envs=args.num_processes,
@@ -121,7 +149,8 @@ def train(args, seeds):
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
                 episode_rewards.append(episode_reward)
-                wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
+                if args.wandb:
+                    wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
@@ -136,7 +165,7 @@ def train(args, seeds):
                 reward_deque[i].append(reward[i])
                 action_deque[i].append(action[i])
                 if len(state_deque[i]) == args.multi_step or done[i]:
-                    n_reward = multi_step_reward(reward_deque[i], args.discount)
+                    n_reward = multi_step_reward(reward_deque[i], args.gamma)
                     n_state = state_deque[i][0]
                     n_action = action_deque[i][0]
                     replay_buffer.add(
@@ -148,42 +177,69 @@ def train(args, seeds):
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log(
-                {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
-            )
+            if args.wandb:
+                wandb.log(
+                    {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
+                )
 
         if t == next_barchart_timestep or t == num_steps - 1:
-            count_data = [[seed, count] for (seed, count) in zip(agent.seed_counts.keys(), agent.seed_counts.values())]
-            table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
-            wandb.log(
-                {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Level", "Count", title = "Sampling distribution of levels")}
-            )
+            if args.wandb:
+                count_data = [[seed, count] for (seed, count) in zip(agent.seed_counts.keys(), agent.seed_counts.values())]
+                table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
+                wandb.log(
+                    {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Level", "Count", title = "Sampling distribution of levels")}
+                )
             barchart_counter = barchart_counter + 1 if barchart_counter < len(barchart_plot_timesteps) - 1 else barchart_counter
             next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
+            if not args.wandb:
+                logging.info(f"\nUpdate {t//args.train_freq} done, {t} steps\n  ")
+                logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
             eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
+            if not args.wandb:
+                logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = eval_policy(
                 args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
             )
-            wandb.log(
-                {
-                    "Test Evaluation Returns": np.mean(eval_episode_rewards),
-                    "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
-                },
-                step=t * args.num_processes,
-                commit=False
-            )
 
-            if t == num_updates - 1:
-                print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
-                final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
+            if args.wandb:
+                wandb.log(
+                    {
+                        "Test Evaluation Returns": np.mean(eval_episode_rewards),
+                        "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
+                    },
+                    step=t * args.num_processes,
+                    commit=False
+                )
 
-                mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
-                median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
+            else:
+                stats = {
+                    "step": t,
+                    "value_loss": loss,
+                    "grad_magnitude": grad_magnitude,
+                    "train:mean_episode_return": np.mean(episode_rewards),
+                    "test:mean_episode_return": np.mean(eval_episode_rewards),
+                    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards)
+                }
 
-                print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
-                print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
+                if t == num_updates - 1:
+                    logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
+                    final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
+
+                    mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
+                    median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
+
+                    plogger.log_final_test_eval(
+                        {
+                            "num_test_seeds": args.final_num_test_seeds,
+                            "mean_episode_return": mean_final_eval_episode_rewards,
+                            "median_episode_return": median_final_eval_episide_rewards,
+                        }
+                    )
+
+                plogger.log(stats)
+
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
