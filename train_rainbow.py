@@ -118,6 +118,18 @@ def train(args, seeds):
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():
                 print("Bad transition")
+            if level_sampler:
+                level_seeds[i][0] = info["level_seed"]
+            state_deque[i].append(state[i])
+            reward_deque[i].append(reward[i])
+            action_deque[i].append(action[i])
+            if len(state_deque[i]) == args.multi_step or done[i]:
+                n_reward = multi_step_reward(reward_deque[i], args.gamma)
+                n_state = state_deque[i][0]
+                n_action = action_deque[i][0]
+                replay_buffer.add(
+                    n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
                 episode_rewards.append(episode_reward)
@@ -125,23 +137,6 @@ def train(args, seeds):
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
-            if level_sampler:
-                level_seeds[i][0] = info["level_seed"]
-
-        if args.multi_step == 1:
-            replay_buffer.add(state, action, next_state, reward, np.uint8(done), level_seeds)
-        else:
-            for i in range(args.num_processes):
-                state_deque[i].append(state[i])
-                reward_deque[i].append(reward[i])
-                action_deque[i].append(action[i])
-                if len(state_deque[i]) == args.multi_step or done[i]:
-                    n_reward = multi_step_reward(reward_deque[i], args.discount)
-                    n_state = state_deque[i][0]
-                    n_action = action_deque[i][0]
-                    replay_buffer.add(
-                        n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
-                    )
 
         state = next_state
 
