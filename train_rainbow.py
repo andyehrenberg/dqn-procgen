@@ -121,8 +121,7 @@ def train(args, seeds):
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
                 episode_rewards.append(episode_reward)
-                if args.wandb:
-                    wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
+                wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
@@ -137,7 +136,7 @@ def train(args, seeds):
                 reward_deque[i].append(reward[i])
                 action_deque[i].append(action[i])
                 if len(state_deque[i]) == args.multi_step or done[i]:
-                    n_reward = multi_step_reward(reward_deque[i], args.gamma)
+                    n_reward = multi_step_reward(reward_deque[i], args.discount)
                     n_state = state_deque[i][0]
                     n_action = action_deque[i][0]
                     replay_buffer.add(
