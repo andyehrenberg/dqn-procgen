@@ -174,7 +174,7 @@ class DDQN(object):
         self.num_actions = args.num_actions
 
         # For seed bar chart
-        self.seed_counts = {i : 0 for i in args.seeds}
+        self.seed_counts = {i : 0 for i in range(args.start_level, args.start_level + args.num_levels)}
 
         # Number of training iterations
         self.iterations = 0
