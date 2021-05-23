@@ -156,7 +156,7 @@ def train(args, seeds):
             barchart_counter = barchart_counter + 1 if barchart_counter < len(barchart_plot_timesteps) - 1 else barchart_counter
             next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
-        if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
+        if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
             train_eval_episode_rewards = eval_policy(
                 args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
@@ -170,15 +170,15 @@ def train(args, seeds):
                 commit=False
             )
 
-            if t == num_updates - 1:
-                print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
-                final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
+        if t == num_updates - 1:
+            print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
+            final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
 
-                mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
-                median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
+            mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
+            median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-                print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
-                print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
+            print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
+            print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
