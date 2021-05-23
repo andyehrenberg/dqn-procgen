@@ -200,7 +200,7 @@ def train(args, seeds):
             if not args.wandb:
                 logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = eval_policy(
-                args, agent, args.num_test_seeds, start_level=0, num_levels=1, seeds=seeds
+                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
             )
 
             if args.wandb:
@@ -210,6 +210,7 @@ def train(args, seeds):
                         "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
                     },
                     step=t * args.num_processes,
+                    commit=False
                 )
 
             else:
@@ -218,11 +219,8 @@ def train(args, seeds):
                     "value_loss": loss,
                     "grad_magnitude": grad_magnitude,
                     "train:mean_episode_return": np.mean(episode_rewards),
-                    "train:median_episode_return": np.median(episode_rewards),
                     "test:mean_episode_return": np.mean(eval_episode_rewards),
-                    "test:median_episode_return": np.median(eval_episode_rewards),
-                    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards),
-                    "train_eval:median_episode_return": np.median(train_eval_episode_rewards),
+                    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards)
                 }
 
                 if t == num_updates - 1:
