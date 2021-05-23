@@ -60,7 +60,6 @@ parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, he
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)
-parser.add_argument("--num_levels", type=int, default=200, help="Number of training levels")
 parser.add_argument("--env_name", default="starpilot")
 parser.add_argument("--distribution_mode", default="easy")
 parser.add_argument("--paint_vel_info", type=lambda x: bool(strtobool(x)), default=False)

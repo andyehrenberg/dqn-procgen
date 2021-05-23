@@ -61,8 +61,7 @@ def train(args, seeds):
             tags=["ddqn", "procgen"],
         )
 
-    args.start_level = 0
-
+    num_levels = 1
     level_sampler_args = dict(
         num_actors=args.num_processes,
         strategy=args.level_replay_strategy,
@@ -82,7 +81,7 @@ def train(args, seeds):
         env_name=args.env_name,
         seeds=seeds,
         device=args.device,
-        num_levels=args.num_levels,
+        num_levels=num_levels,
         start_level=args.start_level,
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
