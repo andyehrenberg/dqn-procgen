@@ -189,7 +189,8 @@ class DDQN(object):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         for seed in seeds:
-            self.seed_counts[seed] = self.seed_counts.get(seed, 0) + 1
+            s = seed.cpu().numpy()[0]
+            self.seed_counts[s] = self.seed_counts.get(s, 0) + 1
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
