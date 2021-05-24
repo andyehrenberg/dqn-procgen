@@ -165,14 +165,12 @@ def train(args, seeds):
                 {
                     "Test Evaluation Returns": np.mean(eval_episode_rewards),
                     "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
-                },
-                step=t * args.num_processes,
-                commit=False
+                }
             )
 
         if t == num_updates - 1:
             print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
-            final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
+            final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
 
             mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
             median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
@@ -201,6 +199,7 @@ def eval_policy(
     seeds=None,
     level_sampler=None,
     progressbar=None,
+    record=False
 ):
     if level_sampler:
         start_level = level_sampler.seed_range()[0]
@@ -217,7 +216,7 @@ def eval_policy(
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
         level_sampler=level_sampler,
-        record_runs=True,
+        record_runs=record,
     )
 
     eval_episode_rewards: List[float] = []
@@ -243,8 +242,9 @@ def eval_policy(
                 if progressbar:
                     progressbar.update(1)
 
-    for video in eval_envs.get_videos():
-        wandb.log({"evaluation_behaviour": video})
+    if record:
+        for video in eval_envs.get_videos():
+            wandb.log({"evaluation_behaviour": video})
 
     eval_envs.close()
     if progressbar:
