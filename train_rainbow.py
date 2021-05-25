@@ -168,7 +168,7 @@ def train(args, seeds):
                 }
             )
 
-        if t == num_updates - 1:
+        if t == num_steps - 1:
             print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
             final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
 
@@ -177,6 +177,11 @@ def train(args, seeds):
 
             print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
             print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
+
+            wandb.log({
+                'Mean Final Evaluation Rewards' : mean_final_eval_episode_rewards,
+                'Median Final Evaluation Rewards' : median_final_eval_episide_rewards
+            })
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
