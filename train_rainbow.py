@@ -148,7 +148,7 @@ def train(args, seeds):
             )
 
         if t == next_barchart_timestep or t == num_steps - 1:
-            count_data = [[seed, count] for (seed, count) in zip(agent.seed_counts.keys(), agent.seed_counts.values())]
+            count_data = [[seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())]
             table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
             wandb.log(
                 {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Seed", "Count", title = "Sampling distribution of levels")}
