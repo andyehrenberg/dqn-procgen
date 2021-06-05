@@ -190,7 +190,10 @@ class DDQN(object):
 
         for idx, seed in enumerate(seeds):
             s = seed.cpu().numpy()[0]
-            self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+            if self.PER:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+            else:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
