@@ -157,9 +157,6 @@ def eval_policy(args, policy, num_episodes=10):
             state, done = eval_env.reset(), False
             state = (torch.FloatTensor(state) / 255.0).to(args.device)
 
-    for video in eval_env.get_videos():
-        wandb.log({"evaluation_behavior": video})
-
     avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
 
     print("---------------------------------------")
