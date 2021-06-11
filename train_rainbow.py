@@ -169,7 +169,7 @@ def train(args, seeds):
             )
 
         if t == num_steps - 1:
-            print(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
+            print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
             final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
 
             mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)

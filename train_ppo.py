@@ -23,6 +23,7 @@ from level_replay.file_writer import FileWriter
 from level_replay.envs import make_lr_venv
 from level_replay.arguments import parser
 from test import evaluate
+import wandb
 
 
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -38,6 +39,14 @@ def train(args, seeds):
         print("Using CUDA\n")
 
     torch.set_num_threads(1)
+
+    wandb.init(
+        settings=wandb.Settings(start_method="fork"),
+        project="off-policy-procgen",
+        entity="ucl-dark",
+        config=vars(args),
+        tags=["ppo"],
+    )
 
     utils.seed(args.seed)
 
@@ -215,11 +224,11 @@ def train(args, seeds):
             )
             update_start_time = update_end_time
 
-            logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
-            logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
+            #logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
+            #logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
             eval_episode_rewards = evaluate(args, actor_critic, args.num_test_seeds, device)
 
-            logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
+            #logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = evaluate(
                 args,
                 actor_critic,
@@ -230,59 +239,76 @@ def train(args, seeds):
                 seeds=seeds,
             )
 
-            stats = {
-                "step": total_num_steps,
-                "pg_loss": action_loss,
-                "value_loss": value_loss,
-                "dist_entropy": dist_entropy,
-                "train:mean_episode_return": np.mean(episode_rewards),
-                "train:median_episode_return": np.median(episode_rewards),
-                "test:mean_episode_return": np.mean(eval_episode_rewards),
-                "test:median_episode_return": np.median(eval_episode_rewards),
-                "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards),
-                "train_eval:median_episode_return": np.median(train_eval_episode_rewards),
-                "sps": sps,
-            }
+            wandb.log(
+                {
+                    "Test Evaluation Returns": np.mean(eval_episode_rewards),
+                    "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
+                }
+            )
+
+            #stats = {
+            #    "step": total_num_steps,
+            #    "pg_loss": action_loss,
+            #    "value_loss": value_loss,
+            #    "dist_entropy": dist_entropy,
+            #    "train:mean_episode_return": np.mean(episode_rewards),
+            #    "train:median_episode_return": np.median(episode_rewards),
+            #    "test:mean_episode_return": np.mean(eval_episode_rewards),
+            #    "test:median_episode_return": np.median(eval_episode_rewards),
+            #    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards),
+            #    "train_eval:median_episode_return": np.median(train_eval_episode_rewards),
+            #    "sps": sps,
+            #}
+
             if is_minigrid:
                 stats["train:success_rate"] = np.mean(np.array(episode_rewards) > 0)
                 stats["train_eval:success_rate"] = np.mean(np.array(train_eval_episode_rewards) > 0)
                 stats["test:success_rate"] = np.mean(np.array(eval_episode_rewards) > 0)
 
             if j == num_updates - 1:
-                logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
+                print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
+                #logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
                 final_eval_episode_rewards = evaluate(args, actor_critic, args.final_num_test_seeds, device)
 
                 mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
                 median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-                plogger.log_final_test_eval(
-                    {
-                        "num_test_seeds": args.final_num_test_seeds,
-                        "mean_episode_return": mean_final_eval_episode_rewards,
-                        "median_episode_return": median_final_eval_episide_rewards,
-                    }
-                )
+                print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
+                print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
 
-            plogger.log(stats)
-            if args.verbose:
-                stdout_logger.writekvs(stats)
+                wandb.log({
+                    'Mean Final Evaluation Rewards' : mean_final_eval_episode_rewards,
+                    'Median Final Evaluation Rewards' : median_final_eval_episide_rewards
+                })
+
+                #plogger.log_final_test_eval(
+                #    {
+                #        "num_test_seeds": args.final_num_test_seeds,
+                #        "mean_episode_return": mean_final_eval_episode_rewards,
+                #        "median_episode_return": median_final_eval_episide_rewards,
+                #    }
+                #)
+
+            #plogger.log(stats)
+            #if args.verbose:
+                #stdout_logger.writekvs(stats)
 
         # Log level weights
-        if level_sampler and j % args.weight_log_interval == 0:
-            plogger.log_level_weights(level_sampler.sample_weights())
+        #if level_sampler and j % args.weight_log_interval == 0:
+            #plogger.log_level_weights(level_sampler.sample_weights())
 
         # Checkpoint
         timer = timeit.default_timer
         if last_checkpoint_time is None:
             last_checkpoint_time = timer()
-        try:
-            if j == num_updates - 1 or (
-                args.save_interval > 0 and timer() - last_checkpoint_time > args.save_interval * 60
-            ):  # Save every 10 min.
-                checkpoint()
-                last_checkpoint_time = timer()
-        except KeyboardInterrupt:
-            return
+        #try:
+        #    if j == num_updates - 1 or (
+        #        args.save_interval > 0 and timer() - last_checkpoint_time > args.save_interval * 60
+        #    ):  # Save every 10 min.
+        #        checkpoint()
+        #        last_checkpoint_time = timer()
+        #except KeyboardInterrupt:
+        #    return
 
 
 def generate_seeds(num_seeds, base_seed=0):
