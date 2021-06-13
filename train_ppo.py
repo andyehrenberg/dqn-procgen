@@ -154,9 +154,11 @@ def train(args, seeds):
 
     timer = timeit.default_timer
     update_start_time = timer()
+    count = 0
     for j in range(num_updates):
         actor_critic.train()
         for step in range(args.num_steps):
+            count += 1
             # Sample actions
             with torch.no_grad():
                 obs_id = rollouts.obs[step]
@@ -243,7 +245,8 @@ def train(args, seeds):
                 {
                     "Test Evaluation Returns": np.mean(eval_episode_rewards),
                     "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
-                }
+                },
+                step = count*args.num_processes
             )
 
             #stats = {
