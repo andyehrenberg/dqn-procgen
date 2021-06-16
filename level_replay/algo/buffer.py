@@ -37,7 +37,7 @@ class Buffer(AbstractBuffer):
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
             self.beta = 0.4
-            self.beta_stepper = (1 - 0.4) / float(num_updates)
+            self.beta_stepper = (1 - self.beta) / float(num_updates)
 
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0] if len(state.shape) == 4 else 1
@@ -127,7 +127,7 @@ class AtariBuffer(AbstractBuffer):
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
             self.beta = 0.4
-            self.beta_stepper = (1 - 0.4) / float(num_updates)
+            self.beta_stepper = (1 - self.beta) / float(num_updates)
 
     def add(self, state, action, next_state, reward, done, seeds):
         end = (self.ptr + 1) % self.max_size
