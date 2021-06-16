@@ -37,7 +37,7 @@ def train(args, seeds):
         project="off-policy-procgen",
         entity="ucl-dark",
         config=vars(args),
-        tags=["ddqn", "procgen"] + args.wandb_tags.split(","),
+        tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
 
