@@ -71,7 +71,6 @@ def train(args, seeds):
     else:
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
-    episode_rewards: deque = deque(maxlen=10)
 
     episode_reward = 0
 
@@ -80,9 +79,6 @@ def train(args, seeds):
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
 
     num_steps = int(args.T_max // args.num_processes)
-
-    # timer = timeit.default_timer
-    # update_start_time = timer()
 
     loss, grad_magnitude = None, None
 
@@ -100,8 +96,7 @@ def train(args, seeds):
     next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
     for t in trange(num_steps):
-        action = None
-        if t < args.start_timesteps or np.random.uniform() < epsilon(t):
+        if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
                 .reshape(-1, 1)
@@ -109,6 +104,9 @@ def train(args, seeds):
             )
         else:
             action, _ = agent.select_action(state)
+            for i in range(args.num_processes):
+                if t < args.start_timesteps or np.random.uniform() < epsilon(t):
+                    action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
@@ -130,7 +128,6 @@ def train(args, seeds):
                 )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
-                episode_rewards.append(episode_reward)
                 wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
                 state_deque[i].clear()
                 reward_deque[i].clear()
