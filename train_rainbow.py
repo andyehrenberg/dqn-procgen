@@ -130,7 +130,6 @@ def train(args, seeds):
                 )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
-                #episode_rewards.append(episode_reward)
                 wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
                 state_deque[i].clear()
                 reward_deque[i].clear()
