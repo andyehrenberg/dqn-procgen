@@ -4,9 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import copy
 import os
-import sys
 import time
 from collections import deque
 import timeit
@@ -14,12 +12,10 @@ import logging
 
 import numpy as np
 import torch
-from baselines.logger import HumanOutputFormat
 
 from level_replay import algo, utils
 from level_replay.model import model_for_env_name
 from level_replay.storage import RolloutStorage
-from level_replay.file_writer import FileWriter
 from level_replay.envs import make_lr_venv
 from level_replay.arguments import parser
 from test import evaluate
@@ -45,7 +41,8 @@ def train(args, seeds):
         project="off-policy-procgen",
         entity="ucl-dark",
         config=vars(args),
-        tags=["ppo"],
+        tags=["ppo"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
+        group=args.wandb_group,
     )
 
     utils.seed(args.seed)
@@ -54,13 +51,6 @@ def train(args, seeds):
     if args.xpid is None:
         args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
     log_dir = os.path.expandvars(os.path.expanduser(args.log_dir))
-    plogger = FileWriter(
-        xpid=args.xpid,
-        xp_args=args.__dict__,
-        rootdir=log_dir,
-        seeds=seeds,
-    )
-    stdout_logger = HumanOutputFormat(sys.stdout)
 
     checkpointpath = os.path.expandvars(os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar")))
 
@@ -99,7 +89,7 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    is_minigrid = args.env_name.startswith("MiniGrid")
+    # is_minigrid = args.env_name.startswith("MiniGrid")
 
     actor_critic = model_for_env_name(args, envs)
     actor_critic.to(device)
@@ -111,8 +101,6 @@ def train(args, seeds):
         envs.action_space,
         actor_critic.recurrent_hidden_state_size,
     )
-
-    batch_size = int(args.num_processes * args.num_steps / args.num_mini_batch)
 
     def checkpoint():
         if args.disable_checkpoint:
@@ -149,11 +137,11 @@ def train(args, seeds):
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
 
-    episode_rewards = deque(maxlen=10)
+    episode_rewards: deque = deque(maxlen=10)
     num_updates = int(args.num_env_steps) // args.num_steps // args.num_processes
 
     timer = timeit.default_timer
-    update_start_time = timer()
+    # update_start_time = timer()
     count = 0
     for j in range(num_updates):
         actor_critic.train()
@@ -174,6 +162,9 @@ def train(args, seeds):
             for i, info in enumerate(infos):
                 if "episode" in info.keys():
                     episode_rewards.append(info["episode"]["r"])
+                    wandb.log(
+                        {"Train Episode Returns": info["episode"]["r"]}, step=count * args.num_processes
+                    )
                 if level_sampler:
                     level_seeds[i][0] = info["level_seed"]
 
@@ -215,22 +206,22 @@ def train(args, seeds):
 
         # Log stats every log_interval updates or if it is the last update
         if (j % args.log_interval == 0 and len(episode_rewards) > 1) or j == num_updates - 1:
-            total_num_steps = (j + 1) * args.num_processes * args.num_steps
+            # total_num_steps = (j + 1) * args.num_processes * args.num_steps
 
-            update_end_time = timer()
-            num_interval_updates = 1 if j == 0 else args.log_interval
-            sps = (
-                num_interval_updates
-                * (args.num_processes * args.num_steps)
-                / (update_end_time - update_start_time)
-            )
-            update_start_time = update_end_time
+            # update_end_time = timer()
+            # num_interval_updates = 1 if j == 0 else args.log_interval
+            # sps = (
+            #     num_interval_updates
+            #     * (args.num_processes * args.num_steps)
+            #     / (update_end_time - update_start_time)
+            # )
+            # update_start_time = update_end_time
 
-            #logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
-            #logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
+            # logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
+            # logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
             eval_episode_rewards = evaluate(args, actor_critic, args.num_test_seeds, device)
 
-            #logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
+            # logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             train_eval_episode_rewards = evaluate(
                 args,
                 actor_critic,
@@ -246,10 +237,10 @@ def train(args, seeds):
                     "Test Evaluation Returns": np.mean(eval_episode_rewards),
                     "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
                 },
-                step = count*args.num_processes
+                step=count * args.num_processes,
             )
 
-            #stats = {
+            # stats = {
             #    "step": total_num_steps,
             #    "pg_loss": action_loss,
             #    "value_loss": value_loss,
@@ -261,56 +252,58 @@ def train(args, seeds):
             #    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards),
             #    "train_eval:median_episode_return": np.median(train_eval_episode_rewards),
             #    "sps": sps,
-            #}
+            # }
 
-            if is_minigrid:
-                stats["train:success_rate"] = np.mean(np.array(episode_rewards) > 0)
-                stats["train_eval:success_rate"] = np.mean(np.array(train_eval_episode_rewards) > 0)
-                stats["test:success_rate"] = np.mean(np.array(eval_episode_rewards) > 0)
+            # if is_minigrid:
+            #     stats["train:success_rate"] = np.mean(np.array(episode_rewards) > 0)
+            #     stats["train_eval:success_rate"] = np.mean(np.array(train_eval_episode_rewards) > 0)
+            #     stats["test:success_rate"] = np.mean(np.array(eval_episode_rewards) > 0)
 
             if j == num_updates - 1:
                 print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
-                #logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
+                # logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
                 final_eval_episode_rewards = evaluate(args, actor_critic, args.final_num_test_seeds, device)
 
                 mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
                 median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-                print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
-                print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
+                print("Mean Final Evaluation Rewards: ", mean_final_eval_episode_rewards)
+                print("Median Final Evaluation Rewards: ", median_final_eval_episide_rewards)
 
-                wandb.log({
-                    'Mean Final Evaluation Rewards' : mean_final_eval_episode_rewards,
-                    'Median Final Evaluation Rewards' : median_final_eval_episide_rewards
-                })
+                wandb.log(
+                    {
+                        "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
+                        "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
+                    }
+                )
 
-                #plogger.log_final_test_eval(
+                # plogger.log_final_test_eval(
                 #    {
                 #        "num_test_seeds": args.final_num_test_seeds,
                 #        "mean_episode_return": mean_final_eval_episode_rewards,
                 #        "median_episode_return": median_final_eval_episide_rewards,
                 #    }
-                #)
+                # )
 
-            #plogger.log(stats)
-            #if args.verbose:
-                #stdout_logger.writekvs(stats)
+            # plogger.log(stats)
+            # if args.verbose:
+            # stdout_logger.writekvs(stats)
 
         # Log level weights
-        #if level_sampler and j % args.weight_log_interval == 0:
-            #plogger.log_level_weights(level_sampler.sample_weights())
+        # if level_sampler and j % args.weight_log_interval == 0:
+        # plogger.log_level_weights(level_sampler.sample_weights())
 
         # Checkpoint
         timer = timeit.default_timer
         if last_checkpoint_time is None:
             last_checkpoint_time = timer()
-        #try:
+        # try:
         #    if j == num_updates - 1 or (
         #        args.save_interval > 0 and timer() - last_checkpoint_time > args.save_interval * 60
         #    ):  # Save every 10 min.
         #        checkpoint()
         #        last_checkpoint_time = timer()
-        #except KeyboardInterrupt:
+        # except KeyboardInterrupt:
         #    return
 
 

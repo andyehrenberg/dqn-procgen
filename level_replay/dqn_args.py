@@ -101,6 +101,18 @@ parser.add_argument(
     default=True,
     help="Whether to log with wandb or save results locally",
 )
+parser.add_argument(
+    "--wandb-tags",
+    type=str,
+    default="",
+    help="Additional tags for this wandb run",
+)
+parser.add_argument(
+    "--wandb-group",
+    type=str,
+    default="",
+    help="Wandb group for this run",
+)
 parser.add_argument("--log_dir", default="~/PLEXR/logs/")
 parser.add_argument("--log_interval", type=int, default=1)
 parser.add_argument("--xpid", default="latest")
