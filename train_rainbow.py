@@ -1,7 +1,5 @@
 import logging
 import os
-import sys
-import time
 from collections import deque
 from typing import List
 
@@ -10,17 +8,16 @@ import torch
 import wandb
 from tqdm import trange
 
-from baselines.logger import HumanOutputFormat
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN
 from level_replay.dqn_args import parser
 from level_replay.envs import make_lr_venv
-from level_replay.file_writer import FileWriter
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
 last_checkpoint_time = None
+
 
 def train(args, seeds):
     global last_checkpoint_time
@@ -40,7 +37,8 @@ def train(args, seeds):
         project="off-policy-procgen",
         entity="ucl-dark",
         config=vars(args),
-        tags=["ddqn", "procgen"],
+        tags=["ddqn", "procgen"] + args.wandb_tags.split(","),
+        group=args.wandb_group,
     )
 
     num_levels = 1
@@ -97,7 +95,7 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    barchart_plot_timesteps = [int(i*num_steps/10) for i in range(1, 10)]
+    barchart_plot_timesteps = [int(i * num_steps / 10) for i in range(1, 10)]
     barchart_counter = 0
     next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
@@ -143,17 +141,25 @@ def train(args, seeds):
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log(
-                {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
-            )
+            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
         if t == next_barchart_timestep or t == num_steps - 1:
-            count_data = [[seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())]
-            table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
+            count_data = [
+                [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
+            ]
+            table = wandb.Table(data=count_data, columns=["Seed", "Count"])
             wandb.log(
-                {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Seed", "Count", title = "Sampling distribution of levels")}
+                {
+                    "Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(
+                        table, "Seed", "Count", title="Sampling distribution of levels"
+                    )
+                }
             )
-            barchart_counter = barchart_counter + 1 if barchart_counter < len(barchart_plot_timesteps) - 1 else barchart_counter
+            barchart_counter = (
+                barchart_counter + 1
+                if barchart_counter < len(barchart_plot_timesteps) - 1
+                else barchart_counter
+            )
             next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
@@ -175,13 +181,16 @@ def train(args, seeds):
             mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
             median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-            print('Mean Final Evaluation Rewards: ', mean_final_eval_episode_rewards)
-            print('Median Final Evaluation Rewards: ', median_final_eval_episide_rewards)
+            print("Mean Final Evaluation Rewards: ", mean_final_eval_episode_rewards)
+            print("Median Final Evaluation Rewards: ", median_final_eval_episide_rewards)
 
-            wandb.log({
-                'Mean Final Evaluation Rewards' : mean_final_eval_episode_rewards,
-                'Median Final Evaluation Rewards' : median_final_eval_episide_rewards
-            })
+            wandb.log(
+                {
+                    "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
+                    "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
+                }
+            )
+
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
@@ -204,7 +213,7 @@ def eval_policy(
     seeds=None,
     level_sampler=None,
     progressbar=None,
-    record=False
+    record=False,
 ):
     if level_sampler:
         start_level = level_sampler.seed_range()[0]

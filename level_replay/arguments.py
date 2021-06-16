@@ -11,8 +11,6 @@
 
 import argparse
 
-import torch
-
 parser = argparse.ArgumentParser(description="RL")
 
 # PPO Arguments.
@@ -127,3 +125,17 @@ parser.add_argument(
     "--weight_log_interval", type=int, default=1, help="Save level weights every this many updates"
 )
 parser.add_argument("--disable_checkpoint", action="store_true", help="Disable saving checkpoint.")
+
+
+parser.add_argument(
+    "--wandb-tags",
+    type=str,
+    default="",
+    help="Additional tags for this wandb run",
+)
+parser.add_argument(
+    "--wandb-group",
+    type=str,
+    default="",
+    help="Wandb group for this run",
+)
