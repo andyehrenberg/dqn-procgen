@@ -107,7 +107,7 @@ def train(args, seeds):
         else:
             action, _ = agent.select_action(state)
             for i in range(args.num_processes):
-                if t < args.start_timesteps or np.random.uniform() < epsilon(t):
+                if np.random.uniform() < epsilon(t):
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
 
         # Perform action and log results
