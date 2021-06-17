@@ -91,10 +91,6 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    barchart_plot_timesteps = [int(i * num_steps / 10) for i in range(1, 10)]
-    barchart_counter = 0
-    next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
-
     for t in trange(num_steps):
         if t < args.start_timesteps:
             action = (
@@ -140,24 +136,20 @@ def train(args, seeds):
             loss, grad_magnitude = agent.train(replay_buffer)
             wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
-        if t == next_barchart_timestep or t == num_steps - 1:
+        if t == num_steps - 1:
             count_data = [
                 [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
             ]
-            table = wandb.Table(data=count_data, columns=["Seed", "Count"])
+            total_weight = sum([i[1] for i in count_data])
+            count_data = [[i[0], i[1]/total_weight] for i in count_data]
+            table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
             wandb.log(
                 {
                     "Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(
-                        table, "Seed", "Count", title="Sampling distribution of levels"
+                        table, "Seed", "Weight", title="Sampling distribution of levels"
                     )
                 }
             )
-            barchart_counter = (
-                barchart_counter + 1
-                if barchart_counter < len(barchart_plot_timesteps) - 1
-                else barchart_counter
-            )
-            next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
             eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
@@ -171,23 +163,33 @@ def train(args, seeds):
                 }
             )
 
-        if t == num_steps - 1:
-            print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
-            final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
+    print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
+    final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
 
-            mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
-            median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
+    mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
+    median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-            print("Mean Final Evaluation Rewards: ", mean_final_eval_episode_rewards)
-            print("Median Final Evaluation Rewards: ", median_final_eval_episide_rewards)
+    print("Mean Final Evaluation Rewards: ", mean_final_eval_episode_rewards)
+    print("Median Final Evaluation Rewards: ", median_final_eval_episide_rewards)
 
-            wandb.log(
-                {
-                    "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
-                    "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
-                }
-            )
+    wandb.log(
+        {
+            "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
+            "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
+        }
+    )
 
+    if args.save_model:
+        print(f"Saving model to {args.model_path}")
+        if 'models' not in os.listdir():
+            os.mkdir('models')
+        torch.save(
+            {
+                "model_state_dict": agent.Q.state_dict(),
+                "args": vars(args),
+            },
+            args.model_path,
+        )
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
@@ -236,8 +238,7 @@ def eval_policy(
     else:
         state = eval_envs.reset()
     while len(eval_episode_rewards) < num_episodes:
-        action = None
-        if np.random.uniform() < 0.05:
+        if np.random.uniform() < args.eval_eps:
             action = (
                 torch.LongTensor([eval_envs.action_space.sample() for _ in range(num_processes)])
                 .reshape(-1, 1)
@@ -245,7 +246,7 @@ def eval_policy(
             )
         else:
             with torch.no_grad():
-                action, q = policy.select_action(state, eval=True)
+                action, _ = policy.select_action(state, eval=True)
         state, _, done, infos = eval_envs.step(action)
         for info in infos:
             if "episode" in info.keys():
