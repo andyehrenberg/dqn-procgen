@@ -13,6 +13,7 @@ from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN
 from level_replay.dqn_args import parser
 from level_replay.envs import make_lr_venv
+from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -124,7 +125,15 @@ def train(args, seeds):
                 )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
-                wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
+                wandb.log(
+                    {
+                        "Train Episode Returns": episode_reward,
+                        "Train Episode Returns (normalised)": ppo_normalise_reward(
+                            episode_reward, args.env_name
+                        ),
+                    },
+                    step=t * args.num_processes,
+                )
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
@@ -152,14 +161,27 @@ def train(args, seeds):
             )
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
-            eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
-            train_eval_episode_rewards = eval_policy(
-                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
+            mean_eval_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
+            mean_train_rewards = np.mean(
+                eval_policy(
+                    args,
+                    agent,
+                    args.num_test_seeds,
+                    start_level=0,
+                    num_levels=args.num_train_seeds,
+                    seeds=seeds,
+                )
             )
             wandb.log(
                 {
-                    "Test Evaluation Returns": np.mean(eval_episode_rewards),
-                    "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
+                    "Test Evaluation Returns": mean_eval_rewards,
+                    "Train Evaluation Returns": mean_train_rewards,
+                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_eval_rewards, args.env_name
+                    ),
+                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_train_rewards, args.env_name
+                    ),
                 }
             )
 
