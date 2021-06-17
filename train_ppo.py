@@ -4,23 +4,23 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 import os
 import time
-from collections import deque
 import timeit
-import logging
+from collections import deque
+from test import evaluate
 
 import numpy as np
 import torch
-
-from level_replay import algo, utils
-from level_replay.model import model_for_env_name
-from level_replay.storage import RolloutStorage
-from level_replay.envs import make_lr_venv
-from level_replay.arguments import parser
-from test import evaluate
 import wandb
 
+from level_replay import algo, utils
+from level_replay.arguments import parser
+from level_replay.envs import make_lr_venv
+from level_replay.model import model_for_env_name
+from level_replay.storage import RolloutStorage
+from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -161,9 +161,16 @@ def train(args, seeds):
             # Reset all done levels by sampling from level sampler
             for i, info in enumerate(infos):
                 if "episode" in info.keys():
-                    episode_rewards.append(info["episode"]["r"])
+                    episode_reward = info["episode"]["r"]
+                    episode_rewards.append(episode_reward)
                     wandb.log(
-                        {"Train Episode Returns": info["episode"]["r"]}, step=count * args.num_processes
+                        {
+                            "Train Episode Returns": episode_reward,
+                            "Train Episode Returns (normalised)": ppo_normalise_reward(
+                                episode_reward, args.env_name
+                            ),
+                        },
+                        step=count * args.num_processes,
                     )
                 if level_sampler:
                     level_seeds[i][0] = info["level_seed"]
@@ -219,23 +226,31 @@ def train(args, seeds):
 
             # logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
             # logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
-            eval_episode_rewards = evaluate(args, actor_critic, args.num_test_seeds, device)
+            mean_eval_rewards = np.mean(evaluate(args, actor_critic, args.num_test_seeds, device))
 
             # logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
-            train_eval_episode_rewards = evaluate(
-                args,
-                actor_critic,
-                args.num_test_seeds,
-                device,
-                start_level=0,
-                num_levels=args.num_train_seeds,
-                seeds=seeds,
+            mean_train_rewards = np.mean(
+                evaluate(
+                    args,
+                    actor_critic,
+                    args.num_test_seeds,
+                    device,
+                    start_level=0,
+                    num_levels=args.num_train_seeds,
+                    seeds=seeds,
+                )
             )
 
             wandb.log(
                 {
-                    "Test Evaluation Returns": np.mean(eval_episode_rewards),
-                    "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
+                    "Test Evaluation Returns": mean_eval_rewards,
+                    "Train Evaluation Returns": mean_train_rewards,
+                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_eval_rewards, args.env_name
+                    ),
+                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_train_rewards, args.env_name
+                    ),
                 },
                 step=count * args.num_processes,
             )

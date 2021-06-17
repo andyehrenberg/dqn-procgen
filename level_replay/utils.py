@@ -4,17 +4,17 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import collections
 import glob
 import os
-import collections
-import timeit
 import random
+import timeit
 
-import numpy
-import torch
-import gym
 import cv2
+import gym
+import numpy
 import numpy as np
+import torch
 
 from level_replay.envs import VideoWrapper
 
@@ -220,3 +220,51 @@ def make_env(env_name, atari_preprocessing, record_runs=False):
     )
 
     return (env, state_dim, env.action_space.n)
+
+
+# Scores taken from Decoupling Value and Policy for Generalization in Reinforcement Learning
+# Note that they're actually slightly different from our results for some games.
+PPO_SCORES: dict = {
+    True: {  # Training scores
+        "bigfish": 8.9,
+        "starpilot": 29.8,
+        "fruitbot": 29.1,
+        "bossfight": 8.5,
+        "ninja": 7.4,
+        "plunder": 6.0,
+        "caveflyer": 6.8,
+        "coinrun": 9.3,
+        "jumper": 8.3,
+        "chaser": 4.9,
+        "climber": 8.4,
+        "dodgeball": 4.2,
+        "heist": 7.1,
+        "leaper": 5.5,
+        "maze": 9.1,
+        "miner": 12.2,
+    },
+    False: {  # Testing scores
+        "bigfish": 3.6,
+        "starpilot": 24.9,
+        "fruitbot": 26.5,
+        "bossfight": 7.6,
+        "ninja": 7.4,
+        "plunder": 6.0,
+        "caveflyer": 5.1,
+        "coinrun": 5.0,
+        "jumper": 5.9,
+        "chaser": 5.6,
+        "climber": 5.9,
+        "dodgeball": 3.7,
+        "heist": 2.5,
+        "leaper": 5.0,
+        "maze": 5.5,
+        "miner": 8.4,
+    },
+}
+
+
+def ppo_normalise_reward(reward: float, env_name: str, training: bool = True) -> float:
+    ppo_score = PPO_SCORES[training][env_name]
+    ppo_percentage = reward / ppo_score
+    return ppo_percentage
