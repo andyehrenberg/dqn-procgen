@@ -150,7 +150,7 @@ def train(args, seeds):
                 [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
             ]
             total_weight = sum([i[1] for i in count_data])
-            count_data = [[i[0], i[1]/total_weight] for i in count_data]
+            count_data = [[i[0], i[1] / total_weight] for i in count_data]
             table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
             wandb.log(
                 {
@@ -203,8 +203,8 @@ def train(args, seeds):
 
     if args.save_model:
         print(f"Saving model to {args.model_path}")
-        if 'models' not in os.listdir():
-            os.mkdir('models')
+        if "models" not in os.listdir():
+            os.mkdir("models")
         torch.save(
             {
                 "model_state_dict": agent.Q.state_dict(),
@@ -212,6 +212,7 @@ def train(args, seeds):
             },
             args.model_path,
         )
+
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
