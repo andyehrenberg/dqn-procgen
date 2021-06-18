@@ -84,8 +84,8 @@ def train(args, seeds):
     loss, grad_magnitude = None, None
 
     epsilon_start = 1.0
-    epsilon_final = 0.1
-    epsilon_decay = 2500
+    epsilon_final = args.end_eps
+    epsilon_decay = args.eps_decay_period
 
     def epsilon(t):
         return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
