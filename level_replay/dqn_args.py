@@ -26,7 +26,7 @@ parser.add_argument(
     default=False,
     help="Whether to use polyak update to target network",
 )
-parser.add_argument("--target_update", type=int, default=2000, help="How often to update target network")
+parser.add_argument("--target_update", type=int, default=1000, help="How often to update target network")
 parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
 parser.add_argument("--end_eps", type=float, default=0.1, help="end epsilon")
@@ -57,6 +57,10 @@ parser.add_argument("--full_train_distribution", type=lambda x: bool(strtobool(x
 parser.add_argument("--gae_lambda", type=float, default=0.95)
 parser.add_argument("--gamma", type=float, default=0.999)
 parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, help="Whether to use PER")
+parser.add_argument(
+    "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
+)
+parser.add_argument("--beta", type=float, default=0.4, help="Beta value for PER")
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)

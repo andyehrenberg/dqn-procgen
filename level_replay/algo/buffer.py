@@ -1,5 +1,9 @@
 import numpy as np
 import torch
+import math
+import random
+
+from level_replay.algo.binary_heap import BinaryHeap
 
 
 class AbstractBuffer:
@@ -188,26 +192,130 @@ class AtariBuffer(AbstractBuffer):
         self.tree.batch_set(ind, priority)
 
 
-class PLRBuffer:
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
-        self.buffers = {
-            i: Buffer(state_dim, batch_size, buffer_size, device, prioritized, num_updates) for i in seeds
-        }
+class RankBuffer(AbstractBuffer):
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
+        super(RankBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
+
+        self.beta = args.beta
+        self.beta_stepper = (1 - self.beta) / float(num_updates)
+        self.priority_queue = BinaryHeap(self.max_size)
+        self.max_priority = 1.0
+
+        self.build_distribution()
+
+    def build_distribution(self):
+        pdf = list(map(lambda x: math.pow(x, -self.max_priority), range(1, self.max_size + 1)))
+        pdf_sum = math.fsum(pdf)
+        self.power_law_distribution = list(map(lambda x: x / pdf_sum, pdf))
 
     def add(self, state, action, next_state, reward, done, seeds):
-        n_transitions = state.shape[0]
-        # end = (self.ptr + n_transitions) % self.max_size
-        for i in seeds.unique():
-            s = state[torch.where(seeds == i)[0]]
-            a = action[torch.where(seeds == i)[0]]
-            n_s = next_state[torch.where(seeds == i)[0]]
-            r = reward[torch.where(seeds == i)[0]]
-            d = done[torch.where(seeds == i)[0]]
-            seed = seeds[torch.where(seeds == i)[0]]
-            self.buffers[i].add(s, a, n_s, r, d, seed)
+        n_transitions = state.shape[0] if len(state.shape) == 4 else 1
+        end = (self.ptr + n_transitions) % self.max_size
+        if "cuda" in self.device.type:
+            state = (state * 255).cpu().numpy().astype(np.uint8)
+            action = action.cpu().numpy().astype(np.uint8)
+            next_state = (next_state * 255).cpu().numpy().astype(np.uint8)
+            reward = reward.cpu().numpy()
+            seeds = seeds.cpu().numpy().astype(np.uint8)
+        else:
+            state = (state * 255).numpy().astype(np.uint8)
+            action = action.numpy().astype(np.uint8)
+            next_state = (next_state * 255).numpy().astype(np.uint8)
+            seeds = seeds.numpy().astype(np.uint8)
 
-    def sample(self, seed):
-        self.buffers[seed].sample()
+        not_done = (1 - done).reshape(-1, 1)
+
+        if self.ptr + n_transitions > self.max_size:
+            self.state[self.ptr :] = state[: n_transitions - end]
+            self.state[:end] = state[n_transitions - end :]
+
+            self.action[self.ptr :] = action[: n_transitions - end]
+            self.action[:end] = action[n_transitions - end :]
+
+            self.next_state[self.ptr :] = next_state[: n_transitions - end]
+            self.next_state[:end] = next_state[n_transitions - end :]
+
+            self.reward[self.ptr :] = reward[: n_transitions - end]
+            self.reward[:end] = reward[n_transitions - end :]
+
+            self.not_done[self.ptr :] = not_done[: n_transitions - end]
+            self.not_done[:end] = not_done[n_transitions - end :]
+            self.seeds[self.ptr :] = seeds[: n_transitions - end]
+            self.seeds[:end] = seeds[n_transitions - end :]
+        else:
+            self.state[self.ptr : self.ptr + n_transitions] = state
+            self.action[self.ptr : self.ptr + n_transitions] = action
+            self.next_state[self.ptr : self.ptr + n_transitions] = next_state
+            self.reward[self.ptr : self.ptr + n_transitions] = reward
+            self.not_done[self.ptr : self.ptr + n_transitions] = not_done
+            self.seeds[self.ptr : self.ptr + n_transitions] = seeds
+
+        priority = self.priority_queue.get_max_priority()
+        for index in [i % self.max_size for i in range(self.ptr, self.ptr + n_transitions)]:
+            self.priority_queue.update(priority, index)
+
+        self.ptr = end
+        self.size = min(self.size + n_transitions, self.max_size)
+
+    def sample(self):
+        ind, weights = self.select(self.batch_size)
+        weights = torch.FloatTensor(weights).to(self.device).reshape(-1, 1)
+
+        return (
+            torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
+            torch.LongTensor(self.action[ind]).to(self.device),
+            torch.FloatTensor(self.next_state[ind]).to(self.device) / 255.0,
+            torch.FloatTensor(self.reward[ind]).to(self.device),
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
+        )
+
+    def rebalance(self):
+        self.priority_queue.balance_tree()
+
+    def update_priority(self, indices, delta):
+        for i in range(len(indices)):
+            self.priority_queue.update(math.fabs(delta[i]), indices[i])
+
+    def select(self, batch_size):
+        distribution = self.power_law_distribution
+        rank_list = []
+        for _ in range(batch_size):
+            index = random.randint(1, self.priority_queue.size)
+            rank_list.append(index)
+
+        alpha_pow = [distribution[v - 1] for v in rank_list]
+        w = np.power(np.array(alpha_pow) * self.size, -self.beta)
+        w_max = max(w)
+        w = np.divide(w, w_max)
+        rank_e_id = 0
+        self.beta = min(self.beta + self.beta_stepper, 1)
+        rank_e_id = self.priority_queue.priority_to_experience(rank_list)
+        return rank_e_id, w
+
+
+# class PLRBuffer:
+# def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
+# self.buffers = {
+#    i: Buffer(state_dim, batch_size, buffer_size, device, prioritized, num_updates) for i in seeds
+# }
+
+# def add(self, state, action, next_state, reward, done, seeds):
+# n_transitions = state.shape[0]
+# end = (self.ptr + n_transitions) % self.max_size
+# for i in seeds.unique():
+# s = state[torch.where(seeds == i)[0]]
+# a = action[torch.where(seeds == i)[0]]
+# n_s = next_state[torch.where(seeds == i)[0]]
+# r = reward[torch.where(seeds == i)[0]]
+# d = done[torch.where(seeds == i)[0]]
+# seed = seeds[torch.where(seeds == i)[0]]
+# self.buffers[i].add(s, a, n_s, r, d, seed)
+
+# def sample(self, seed):
+# self.buffers[seed].sample()
 
 
 class SumTree(object):
@@ -259,6 +367,10 @@ class SumTree(object):
 
 
 def make_buffer(args, num_updates, atari=False):
+    if args.rank_based:
+        return RankBuffer(
+            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
+        )
     if not atari:
         return Buffer(
             args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
