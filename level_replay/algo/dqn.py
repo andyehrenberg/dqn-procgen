@@ -98,7 +98,7 @@ class ImpalaCNN(nn.Module):
         Number of channels in the input image.
     """
 
-    def __init__(self, num_inputs, channels=[16, 32, 32]):
+    def __init__(self, num_inputs, channels=[16, 32, 32]):  # noqa: B006
         super(ImpalaCNN, self).__init__()
 
         # define Impala CNN
@@ -180,7 +180,7 @@ class NoisyLinear(nn.Module):
 
 class RainbowDQN(nn.Module):
     def __init__(self, args, action_space):
-        super(DQN, self).__init__()
+        super().__init__()
         self.atoms = args.atoms
         self.action_space = action_space
 
@@ -229,6 +229,7 @@ class DQN(nn.Module):
 
     def forward(self, x, log=False):
         x = self.features(x)
+
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
         advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream

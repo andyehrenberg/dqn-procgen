@@ -50,7 +50,8 @@ class Buffer(AbstractBuffer):
             state = (state * 255).cpu().numpy().astype(np.uint8)
             action = action.cpu().numpy().astype(np.uint8)
             next_state = (next_state * 255).cpu().numpy().astype(np.uint8)
-            reward = reward.cpu().numpy()
+            # We leave reward as numpy throughout
+            # reward = reward.cpu().numpy()
             seeds = seeds.cpu().numpy().astype(np.uint8)
         else:
             state = (state * 255).numpy().astype(np.uint8)
