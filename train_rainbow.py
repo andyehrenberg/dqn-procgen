@@ -188,7 +188,9 @@ def train(args, seeds):
             )
 
     print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
-    final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds, record=True)
+    final_eval_episode_rewards = eval_policy(
+        args, agent, args.final_num_test_seeds, record=args.record_final_eval
+    )
 
     mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
     median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)

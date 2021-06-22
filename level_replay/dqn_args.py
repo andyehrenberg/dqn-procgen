@@ -117,6 +117,7 @@ parser.add_argument(
     default="",
     help="Wandb group for this run",
 )
+parser.add_argument("--record_final_eval", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--log_dir", default="~/PLEXR/logs/")
 parser.add_argument("--log_interval", type=int, default=1)
 parser.add_argument("--xpid", default="latest")
