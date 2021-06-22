@@ -5,9 +5,9 @@ from typing import List
 
 import numpy as np
 import torch
-import wandb
 from tqdm import trange
 
+import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN
@@ -100,10 +100,12 @@ def train(args, seeds):
                 .to(args.device)
             )
         else:
+            cur_epsilon = epsilon(t)
             action, _ = agent.select_action(state)
             for i in range(args.num_processes):
-                if np.random.uniform() < epsilon(t):
+                if np.random.uniform() < cur_epsilon:
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
+            wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
@@ -154,7 +156,7 @@ def train(args, seeds):
             table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
             wandb.log(
                 {
-                    "Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(
+                    "Seed Sampling Distribution at End of Training": wandb.plot.bar(
                         table, "Seed", "Weight", title="Sampling distribution of levels"
                     )
                 }
@@ -198,6 +200,12 @@ def train(args, seeds):
         {
             "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
             "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
+            "Mean Final Evaluation Rewards (normalised)": ppo_normalise_reward(
+                mean_final_eval_episode_rewards, args.env_name
+            ),
+            "Median Final Evaluation Rewards (normalised)": ppo_normalise_reward(
+                median_final_eval_episide_rewards, args.env_name
+            ),
         }
     )
 

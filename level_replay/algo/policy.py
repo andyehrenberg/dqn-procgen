@@ -3,7 +3,7 @@ import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, RainbowDQN, TwoNetworkDQN
+from level_replay.algo.dqn import DQN, RainbowDQN
 from torch.nn.utils import clip_grad_norm_
 
 
@@ -73,16 +73,16 @@ class Rainbow(object):
             pns_a = pns.gather(1, next_action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
             target_Q = reward.expand(-1, self.atoms) + done * (self.discount ** self.n) * pns_a
 
-        current_Q = (
-            self.Q(state).gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-        )
+        # current_Q = (
+        #     self.Q(state).gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
+        # )
 
         target_Q = target_Q.clamp(min=self.V_min, max=self.V_max)  # Clamp between supported values
         # Compute L2 projection of Tz onto fixed support z
         b = (target_Q - self.V_min) / self.delta_z
-        l, u = b.floor().to(torch.int64), b.ceil().to(torch.int64)
-        l[(u > 0) * (l == u)] -= 1
-        u[(l < (self.atoms - 1)) * (l == u)] += 1
+        low, up = b.floor().to(torch.int64), b.ceil().to(torch.int64)
+        low[(up > 0) * (low == up)] -= 1
+        up[(low < (self.atoms - 1)) * (low == up)] += 1
 
         # Distribute probability of Tz
         m = state.new_zeros(self.batch_size, self.atoms)
@@ -93,10 +93,10 @@ class Rainbow(object):
             .to(action)
         )
         m.view(-1).index_add_(
-            0, (l + offset).view(-1), (pns_a * (u.float() - b)).view(-1)
+            0, (low + offset).view(-1), (pns_a * (up.float() - b)).view(-1)
         )  # m_l = m_l + p(s_t+n, a*)(u - b)
         m.view(-1).index_add_(
-            0, (u + offset).view(-1), (pns_a * (b - l.float())).view(-1)
+            0, (up + offset).view(-1), (pns_a * (b - low.float())).view(-1)
         )  # m_u = m_u + p(s_t+n, a*)(b - l)
 
         loss = -torch.sum(m * log_p1s_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
@@ -174,7 +174,7 @@ class DDQN(object):
         self.num_actions = args.num_actions
 
         # For seed bar chart
-        self.seed_weights = {i : 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
+        self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
 
         # Number of training iterations
         self.iterations = 0
