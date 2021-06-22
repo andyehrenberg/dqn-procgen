@@ -153,7 +153,7 @@ class DDQN(object):
         self.PER = args.PER
         self.n_step = args.multi_step
 
-        self.alpha = args.alpha
+        self.alpha = args.priority_exponent
         self.min_priority = args.min_priority
 
         # Target update rule
@@ -216,7 +216,7 @@ class DDQN(object):
         self.maybe_update_target()
 
         if self.PER:
-            priority = ((current_Q - target_Q).abs() + 1e-10).pow(0.6).cpu().data.numpy().flatten()
+            priority = ((current_Q - target_Q).abs() + 1e-10).pow(self.alpha).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude

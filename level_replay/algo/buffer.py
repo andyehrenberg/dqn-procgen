@@ -368,7 +368,7 @@ class SumTree(object):
 
 
 def make_buffer(args, num_updates, atari=False):
-    if args.rank_based:
+    if args.rank_based_PER:
         return RankBuffer(
             args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
         )
