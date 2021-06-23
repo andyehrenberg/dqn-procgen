@@ -41,14 +41,11 @@ parser.add_argument("--atoms", type=int, default=51, help="Number of atoms for d
 parser.add_argument("--hidden_size", type=int, default=512)
 parser.add_argument("--noisy_std", type=float, default=0.5, help="Standard deviation for noisy layers")
 parser.add_argument("--model", default=None)
-parser.add_argument("--history_length", type=int, default=4)
-parser.add_argument("--multi_step", type=int, default=1, help="Number of steps for multi step rewards")
-parser.add_argument("--priority_weight", type=float, default=0.4)
-parser.add_argument("--priority_exponent", type=float, default=0.5)
+parser.add_argument("--history_length", type=int, default=1)
+parser.add_argument("--multi_step", type=int, default=3, help="Number of steps for multi step rewards")
 parser.add_argument("--t", type=int, default=0)
 parser.add_argument("--no_ret_normalization", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--eps", type=float, default=1e-05)
-parser.add_argument("--alpha", type=float, default=0.5)
 parser.add_argument("--clip_param", type=float, default=0.2)
 parser.add_argument("--disable_checkpoint", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--entropy_coef", type=float, default=0.01)
@@ -60,7 +57,14 @@ parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, he
 parser.add_argument(
     "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
 )
+parser.add_argument(
+    "--seg_tree_buffer",
+    type=lambda x: bool(strtobool(x)),
+    default=False,
+    help="Whether to use new PER implementation",
+)
 parser.add_argument("--beta", type=float, default=0.4, help="Beta value for PER")
+parser.add_argument("--alpha", type=float, default=0.5)
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)
