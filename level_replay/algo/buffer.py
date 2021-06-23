@@ -297,6 +297,208 @@ class RankBuffer(AbstractBuffer):
         return rank_e_id, w
 
 
+class SegmentTree:
+    def __init__(self, size, device, args):
+        self.device = device
+        self.index = 0
+        self.max_size = size
+        self.full = False  # Used to track actual capacity
+        self.tree_start = (
+            2 ** (self.max_size - 1).bit_length() - 1
+        )  # Put all used node leaves on last tree level
+        self.sum_tree = np.zeros((self.tree_start + self.max_size,), dtype=np.float32)
+        self.state = np.zeros((self.max_size, *args.state_dim), dtype=np.uint8)
+        self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.next_state = np.array(self.state)
+        self.reward = np.zeros((self.max_size, 1))
+        self.not_done = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.seeds = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.max = 1  # Initial max value to return (1 = 1^ω)
+
+    # Updates nodes values from current tree
+    def _update_nodes(self, indices):
+        children_indices = indices * 2 + np.expand_dims([1, 2], axis=1)
+        self.sum_tree[indices] = np.sum(self.sum_tree[children_indices], axis=0)
+
+    # Propagates changes up tree given tree indices
+    def _propagate(self, indices):
+        parents = (indices - 1) // 2
+        unique_parents = np.unique(parents)
+        self._update_nodes(unique_parents)
+        if parents[0] != 0:
+            self._propagate(parents)
+
+    # Propagates single value up tree given a tree index for efficiency
+    def _propagate_index(self, index):
+        parent = (index - 1) // 2
+        left, right = 2 * parent + 1, 2 * parent + 2
+        self.sum_tree[parent] = self.sum_tree[left] + self.sum_tree[right]
+        if parent != 0:
+            self._propagate_index(parent)
+
+    # Updates values given tree indices
+    def update(self, indices, values):
+        self.sum_tree[indices] = values  # Set new values
+        self._propagate(indices)  # Propagate values
+        current_max_value = np.max(values)
+        self.max = max(current_max_value, self.max)
+
+    # Updates single value given a tree index for efficiency
+    def _update_index(self, index, value):
+        self.sum_tree[index] = value  # Set new value
+        self._propagate_index(index)  # Propagate value
+        self.max = max(value, self.max)
+
+    def append(self, state, action, next_state, reward, done, seeds, value):
+        if "cuda" in self.device.type:
+            state = (state * 255).cpu().numpy().astype(np.uint8)
+            action = action.cpu().numpy().astype(np.uint8)
+            next_state = (next_state * 255).cpu().numpy().astype(np.uint8)
+            seeds = seeds.cpu().numpy().astype(np.uint8)
+        else:
+            state = (state * 255).numpy().astype(np.uint8)
+            action = action.numpy().astype(np.uint8)
+            next_state = (next_state * 255).numpy().astype(np.uint8)
+            seeds = seeds.numpy().astype(np.uint8)
+        not_done = (1 - done).reshape(-1, 1)
+
+        self.state[self.index] = state
+        self.action[self.index] = action
+        self.next_state[self.index] = next_state
+        self.reward[self.index] = reward
+        self.not_done[self.index] = not_done
+        self.seeds[self.index] = seeds
+
+        self._update_index(self.index + self.tree_start, value)  # Update tree
+        self.index = (self.index + 1) % self.max_size  # Update index
+        self.full = self.full or self.index == 0  # Save when capacity reached
+        self.max = max(value, self.max)
+
+    # Searches for the location of values in sum tree
+    def _retrieve(self, indices, values):
+        children_indices = indices * 2 + np.expand_dims([1, 2], axis=1)  # Make matrix of children indices
+        # If indices correspond to leaf nodes, return them
+        if children_indices[0, 0] >= self.sum_tree.shape[0]:
+            return indices
+        # If children indices correspond to leaf nodes, bound rare outliers in case total slightly overshoots
+        elif children_indices[0, 0] >= self.tree_start:
+            children_indices = np.minimum(children_indices, self.sum_tree.shape[0] - 1)
+        left_children_values = self.sum_tree[children_indices[0]]
+        successor_choices = np.greater(values, left_children_values).astype(
+            np.int32
+        )  # Classify which values are in left or right branches
+        successor_indices = children_indices[
+            successor_choices, np.arange(indices.size)
+        ]  # Use classification to index into the indices matrix
+        successor_values = (
+            values - successor_choices * left_children_values
+        )  # Subtract the left branch values when searching in the right branch
+        return self._retrieve(successor_indices, successor_values)
+
+    # Searches for values in sum tree and returns values, data indices and tree indices
+    def find(self, values):
+        indices = self._retrieve(np.zeros(values.shape, dtype=np.int32), values)
+        data_index = indices - self.tree_start
+        return (self.sum_tree[indices], data_index, indices)  # Return values, data indices, tree indices
+
+    # Returns data given a data index
+    def get(self, data_index):
+        return (
+            torch.FloatTensor(self.state[data_index % self.max_size]).to(self.device) / 255.0,
+            torch.LongTensor(self.action[data_index % self.max_size]).to(self.device),
+            torch.FloatTensor(self.next_state[data_index % self.max_size]).to(self.device) / 255.0,
+            torch.FloatTensor(self.reward[data_index % self.max_size]).to(self.device),
+            torch.FloatTensor(self.not_done[data_index % self.max_size]).to(self.device),
+            torch.LongTensor(self.seeds[data_index % self.max_size]).to(self.device),
+            data_index % self.max_size,
+        )
+
+    def total(self):
+        return self.sum_tree[0]
+
+
+class ReplayMemory:
+    def __init__(self, args):
+        self.device = args.device
+        self.capacity = args.memory_capacity
+        self.discount = args.discount
+        self.n = args.multi_step
+        self.priority_weight = (
+            args.beta
+        )  # Initial importance sampling weight β, annealed to 1 over course of training
+        self.priority_exponent = args.alpha
+        self.t = 0  # Internal episode timestep counter
+        self.transitions = SegmentTree(
+            self.capacity, self.device, args
+        )  # Store transitions in a wrap-around cyclic buffer within a sum tree for querying priorities
+
+    # Adds state and action at time t, reward and terminal at time t + 1
+    def add(self, state, action, next_state, reward, done, seeds):
+        self.transitions.append(
+            state, action, next_state, reward, done, seeds, self.transitions.max
+        )  # Store new transition with maximum priority
+        self.t = 0 if done else self.t + 1  # Start new episodes with t = 0
+
+    # Returns the transitions with blank states where appropriate
+    def _get_transitions(self, idxs):
+        transition_idxs = idxs
+        transitions = self.transitions.get(transition_idxs)
+        return transitions
+
+    # Returns a valid sample from each segment
+    def _get_samples_from_segments(self, batch_size, p_total):
+        segment_length = (
+            p_total / batch_size
+        )  # Batch size number of segments, based on sum over all probabilities
+        segment_starts = np.arange(batch_size) * segment_length
+        valid = False
+        while not valid:
+            samples = (
+                np.random.uniform(0.0, segment_length, [batch_size]) + segment_starts
+            )  # Uniformly sample from within all segments
+            probs, idxs, tree_idxs = self.transitions.find(
+                samples
+            )  # Retrieve samples from tree with un-normalised probability
+            if (
+                np.all((self.transitions.index - idxs) % self.capacity > self.n)
+                and np.all((idxs - self.transitions.index) % self.capacity >= 1)
+                and np.all(probs != 0)
+            ):
+                valid = True  # Note that conditions are valid but extra conservative around buffer index 0
+        state, action, next_state, reward, not_done, seeds, ind = self._get_transitions(idxs)
+        return probs, idxs, tree_idxs, state, action, next_state, reward, not_done, seeds, ind
+
+    def sample(self, batch_size):
+        p_total = (
+            self.transitions.total()
+        )  # Retrieve sum of all priorities (used to create a normalised probability distribution)
+        (
+            probs,
+            idxs,
+            tree_idxs,
+            state,
+            action,
+            next_state,
+            reward,
+            not_done,
+            seeds,
+            ind,
+        ) = self._get_samples_from_segments(
+            batch_size, p_total
+        )  # Get batch of valid samples
+        probs = probs / p_total  # Calculate normalised probabilities
+        capacity = self.capacity if self.transitions.full else self.transitions.index
+        weights = (capacity * probs) ** -self.priority_weight  # Compute importance-sampling weights w
+        weights = torch.tensor(
+            weights / weights.max(), dtype=torch.float32, device=self.device
+        )  # Normalise by max importance-sampling weight from batch
+        return tree_idxs, state, action, next_state, reward, not_done, seeds, ind, weights
+
+    def update_priorities(self, idxs, priorities):
+        priorities = np.power(priorities, self.priority_exponent)
+        self.transitions.update(idxs, priorities)
+
+
 # class PLRBuffer:
 # def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
 # self.buffers = {
@@ -367,7 +569,9 @@ class SumTree(object):
             node_index //= 2
 
 
-def make_buffer(args, num_updates, atari=False):
+def make_buffer(args, num_updates, atari=False, seg_tree_buffer=False):
+    if args.seg_tree_buffer:
+        return ReplayMemory(args)
     if args.rank_based_PER:
         return RankBuffer(
             args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
