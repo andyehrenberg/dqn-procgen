@@ -92,7 +92,9 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    for t in trange(num_steps):
+    loop = trange if args.interactive else range
+
+    for t in loop(num_steps):
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
