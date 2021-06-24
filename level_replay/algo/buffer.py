@@ -301,7 +301,7 @@ class SegmentTree:
     def __init__(self, size, device, args):
         self.device = device
         self.index = 0
-        self.max_size = size
+        self.max_size = int(size)
         self.full = False  # Used to track actual capacity
         self.tree_start = (
             2 ** (self.max_size - 1).bit_length() - 1
