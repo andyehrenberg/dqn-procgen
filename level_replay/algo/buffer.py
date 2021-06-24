@@ -120,7 +120,7 @@ class Buffer(AbstractBuffer):
         )
 
     def update_priority(self, ind, priority):
-        priority = priority.pow(self.alpha)
+        priority = np.power(priority, self.alpha)
         self.max_priority = max(priority.max(), self.max_priority)
         self.tree.batch_set(ind, priority)
 
@@ -280,7 +280,7 @@ class RankBuffer(AbstractBuffer):
         self.priority_queue.balance_tree()
 
     def update_priority(self, indices, delta):
-        delta = delta.pow(self.alpha)
+        delta = np.power(delta, self.alpha)
         for i in range(len(indices)):
             self.priority_queue.update(math.fabs(delta[i]), indices[i])
 
@@ -497,7 +497,16 @@ class ReplayMemory:
         weights = torch.tensor(
             weights / weights.max(), dtype=torch.float32, device=self.device
         )  # Normalise by max importance-sampling weight from batch
-        return tree_idxs, state, action, next_state, reward, not_done, seeds, ind, weights
+        return (
+            torch.FloatTensor(state).to(self.device) / 255.0,
+            torch.LongTensor(action).to(self.device),
+            torch.FloatTensor(next_state).to(self.device) / 255.0,
+            torch.FloatTensor(reward).to(self.device),
+            torch.FloatTensor(not_done).to(self.device),
+            torch.LongTensor(seeds).to(self.device),
+            ind,
+            weights,
+        )
 
     def update_priority(self, idxs, priorities):
         priorities = np.power(priorities, self.priority_exponent)
