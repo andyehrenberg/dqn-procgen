@@ -219,7 +219,7 @@ class RankBuffer(AbstractBuffer):
             state = (state * 255).cpu().numpy().astype(np.uint8)
             action = action.cpu().numpy().astype(np.uint8)
             next_state = (next_state * 255).cpu().numpy().astype(np.uint8)
-            reward = reward.cpu().numpy()
+            # reward = reward.cpu().numpy()
             seeds = seeds.cpu().numpy().astype(np.uint8)
         else:
             state = (state * 255).numpy().astype(np.uint8)
@@ -427,6 +427,7 @@ class ReplayMemory:
         self.capacity = args.memory_capacity
         self.discount = args.discount
         self.n = args.multi_step
+        self.batch_size = args.batch_size
         self.priority_weight = (
             args.beta
         )  # Initial importance sampling weight β, annealed to 1 over course of training
@@ -472,7 +473,7 @@ class ReplayMemory:
         state, action, next_state, reward, not_done, seeds, ind = self._get_transitions(idxs)
         return probs, idxs, tree_idxs, state, action, next_state, reward, not_done, seeds, ind
 
-    def sample(self, batch_size):
+    def sample(self):
         p_total = (
             self.transitions.total()
         )  # Retrieve sum of all priorities (used to create a normalised probability distribution)
@@ -488,7 +489,7 @@ class ReplayMemory:
             seeds,
             ind,
         ) = self._get_samples_from_segments(
-            batch_size, p_total
+            self.batch_size, p_total
         )  # Get batch of valid samples
         probs = probs / p_total  # Calculate normalised probabilities
         capacity = self.capacity if self.transitions.full else self.transitions.index
