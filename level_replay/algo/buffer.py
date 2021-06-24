@@ -33,15 +33,16 @@ class AbstractBuffer:
 
 
 class Buffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates):
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
         super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
 
         if self.prioritized:
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
-            self.beta = 0.4
+            self.beta = args.beta
             self.beta_stepper = (1 - self.beta) / float(num_updates)
+            self.alpha = args.alpha
 
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0] if len(state.shape) == 4 else 1
@@ -119,12 +120,13 @@ class Buffer(AbstractBuffer):
         )
 
     def update_priority(self, ind, priority):
+        priority = priority.pow(self.alpha)
         self.max_priority = max(priority.max(), self.max_priority)
         self.tree.batch_set(ind, priority)
 
 
 class AtariBuffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates):
+    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
         super(AtariBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
         self.prioritized = prioritized
 
@@ -201,6 +203,7 @@ class RankBuffer(AbstractBuffer):
         self.beta_stepper = (1 - self.beta) / float(num_updates)
         self.priority_queue = BinaryHeap(self.max_size)
         self.max_priority = 1.0
+        self.alpha = args.alpha
 
         self.build_distribution()
 
@@ -277,6 +280,7 @@ class RankBuffer(AbstractBuffer):
         self.priority_queue.balance_tree()
 
     def update_priority(self, indices, delta):
+        delta = delta.pow(self.alpha)
         for i in range(len(indices)):
             self.priority_queue.update(math.fabs(delta[i]), indices[i])
 
@@ -494,7 +498,7 @@ class ReplayMemory:
         )  # Normalise by max importance-sampling weight from batch
         return tree_idxs, state, action, next_state, reward, not_done, seeds, ind, weights
 
-    def update_priorities(self, idxs, priorities):
+    def update_priority(self, idxs, priorities):
         priorities = np.power(priorities, self.priority_exponent)
         self.transitions.update(idxs, priorities)
 
@@ -578,8 +582,8 @@ def make_buffer(args, num_updates, atari=False, seg_tree_buffer=False):
         )
     if not atari:
         return Buffer(
-            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
+            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
         )
     return AtariBuffer(
-        args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates
+        args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
     )
