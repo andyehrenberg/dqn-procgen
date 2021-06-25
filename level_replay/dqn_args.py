@@ -7,9 +7,9 @@ parser = argparse.ArgumentParser(description="DQN")
 parser.add_argument(
     "--start_timesteps", type=int, default=2000, help="Timesteps until using DQN to take actions"
 )
-parser.add_argument("--train_freq", type=int, default=64, help="Number of steps between DQN updates")
+parser.add_argument("--train_freq", type=int, default=4, help="Number of steps between DQN updates")
 parser.add_argument("--eval_freq", type=int, default=1000, help="Evaluation frequency")
-parser.add_argument("--T_max", type=int, default=50e6, help="Total environment steps")
+parser.add_argument("--T_max", type=int, default=25e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
 
 # Model parameters
@@ -30,7 +30,7 @@ parser.add_argument("--target_update", type=int, default=1000, help="How often t
 parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
 parser.add_argument("--end_eps", type=float, default=0.1, help="end epsilon")
-parser.add_argument("--eps_decay_period", type=int, default=2500)
+parser.add_argument("--eps_decay_period", type=int, default=4000)
 parser.add_argument("--eval_eps", type=float, default=0.05)
 parser.add_argument("--min_priority", type=float, default=1e-1)
 parser.add_argument("--V_min", type=float, default=0)
