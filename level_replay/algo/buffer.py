@@ -497,16 +497,7 @@ class ReplayMemory:
         weights = torch.tensor(
             weights / weights.max(), dtype=torch.float32, device=self.device
         )  # Normalise by max importance-sampling weight from batch
-        return (
-            torch.FloatTensor(state).to(self.device) / 255.0,
-            torch.LongTensor(action).to(self.device),
-            torch.FloatTensor(next_state).to(self.device) / 255.0,
-            torch.FloatTensor(reward).to(self.device),
-            torch.FloatTensor(not_done).to(self.device),
-            torch.LongTensor(seeds).to(self.device),
-            ind,
-            weights,
-        )
+        return state, action, next_state, reward, not_done, seeds, ind, weights
 
     def update_priority(self, idxs, priorities):
         priorities = np.power(priorities, self.priority_exponent)
