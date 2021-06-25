@@ -493,10 +493,8 @@ class ReplayMemory:
         )  # Get batch of valid samples
         probs = probs / p_total  # Calculate normalised probabilities
         capacity = self.capacity if self.transitions.full else self.transitions.index
-        weights = (capacity * probs) ** -self.priority_weight  # Compute importance-sampling weights w
-        weights = torch.tensor(
-            weights / weights.max(), dtype=torch.float32, device=self.device
-        )  # Normalise by max importance-sampling weight from batch
+        weights = (capacity * probs) ** -self.priority_weight
+        weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
         return state, action, next_state, reward, not_done, seeds, ind, weights
 
     def update_priority(self, idxs, priorities):
