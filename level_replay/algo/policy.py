@@ -185,8 +185,20 @@ class DDQN(object):
             action = q.argmax(1).reshape(-1, 1)
             return action, None
 
-    def train(self, replay_buffer):
-        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+    def train(self, replay_buffer, ere=False, c_k=None):
+        if ere:
+            (
+                state,
+                action,
+                next_state,
+                reward,
+                not_done,
+                seeds,
+                ind,
+                weights,
+            ) = replay_buffer.sample_priority_only_batch(c_k)
+        else:
+            state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         for idx, seed in enumerate(seeds):
             s = seed.cpu().numpy()[0]
@@ -215,7 +227,7 @@ class DDQN(object):
         self.iterations += 1
         self.maybe_update_target()
 
-        if self.PER:
+        if self.PER and not ere:
             priority = ((current_Q - target_Q).abs() + 1e-10).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
