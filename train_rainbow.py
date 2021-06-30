@@ -146,7 +146,7 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            for _ in args.num_updates:
+            for _ in range(args.num_updates):
                 loss, grad_magnitude = agent.train(replay_buffer)
                 wandb.log(
                     {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes

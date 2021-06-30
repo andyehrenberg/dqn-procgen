@@ -149,7 +149,7 @@ def train(args, seeds):
                 args.memory_capacity, args.num_updates, eta_current, update_order="old_first"
             )
 
-            for k in args.num_updates:
+            for k in range(args.num_updates):
                 c_k = ck_list[k]
                 if c_k < 5000:
                     c_k = 5000
