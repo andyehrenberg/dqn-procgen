@@ -9,7 +9,7 @@ from tqdm import trange
 
 import wandb
 from level_replay import utils
-from level_replay.algo.buffer import make_buffer
+from level_replay.algo.buffer import AutoEREBuffer
 from level_replay.algo.policy import DDQN
 from level_replay.dqn_args import parser
 from level_replay.envs import make_lr_venv
@@ -28,6 +28,7 @@ def train(args, seeds):
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = seeds
+    args.wandb_group = "ere"
 
     torch.set_num_threads(1)
 
@@ -60,9 +61,7 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-
-    replay_buffer = make_buffer(args, num_updates)
+    replay_buffer = AutoEREBuffer(args.state_dim, args.batch_size, args.memory_capacity, args.device)
 
     agent = DDQN(args)
 
@@ -92,9 +91,7 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    loop = trange if args.interactive else range
-
-    for t in loop(num_steps):
+    for t in trange(num_steps):
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -146,8 +143,17 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            for _ in args.num_updates:
-                loss, grad_magnitude = agent.train(replay_buffer)
+            eta_current = replay_buffer.get_auto_eta_max_history()
+
+            ck_list = get_ck_list_exp(
+                args.memory_capacity, args.num_updates, eta_current, update_order="old_first"
+            )
+
+            for k in args.num_updates:
+                c_k = ck_list[k]
+                if c_k < 5000:
+                    c_k = 5000
+                loss, grad_magnitude = agent.train(replay_buffer, ere=True, c_k=c_k)
                 wandb.log(
                     {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
                 )
@@ -237,6 +243,24 @@ def load_seeds(seed_path):
     seed_path = os.path.expandvars(os.path.expanduser(seed_path))
     seeds = open(seed_path).readlines()
     return [int(s) for s in seeds]
+
+
+def compute_current_eta(eta_initial, eta_final, current_timestep, total_timestep):
+    current_eta = eta_initial + (eta_final - eta_initial) * current_timestep / total_timestep
+    return current_eta
+
+
+def get_ck_list_exp(replay_size, num_updates, eta_current, update_order):
+    ck_list = np.zeros(num_updates, dtype=int)
+    for k in range(num_updates):  # compute ck for each k, using formula for old data first update
+        ck_list[k] = int(replay_size * eta_current ** (k * 1000 / num_updates))
+    if update_order == "new_first":
+        ck_list = np.flip(ck_list, axis=0)
+    elif update_order == "random":
+        ck_list = np.random.permutation(ck_list)
+    else:  # 'old_first'
+        pass
+    return ck_list
 
 
 def eval_policy(

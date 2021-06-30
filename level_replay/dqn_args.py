@@ -8,6 +8,7 @@ parser.add_argument(
     "--start_timesteps", type=int, default=2000, help="Timesteps until using DQN to take actions"
 )
 parser.add_argument("--train_freq", type=int, default=4, help="Number of steps between DQN updates")
+parser.add_argument("--num_updates", type=int, default=1, help="Number of DQN updates to make at a time")
 parser.add_argument("--eval_freq", type=int, default=1000, help="Evaluation frequency")
 parser.add_argument("--T_max", type=int, default=25e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
