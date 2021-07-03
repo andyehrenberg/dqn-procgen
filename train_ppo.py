@@ -157,6 +157,7 @@ def train(args, seeds):
 
             # Obser reward and next obs
             obs, reward, done, infos = envs.step(action)
+            reward = torch.from_numpy(reward)
 
             # Reset all done levels by sampling from level sampler
             for i, info in enumerate(infos):
