@@ -202,7 +202,7 @@ class DDQN(object):
 
         for idx, seed in enumerate(seeds):
             s = seed.cpu().numpy()[0]
-            if self.PER:
+            if self.PER and not ere:
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
             else:
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
