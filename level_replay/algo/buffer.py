@@ -532,8 +532,8 @@ class SumTree(object):
 
 
 def make_buffer(args, atari=False):
+    if atari:
+        return AbstractBuffer(args)
     if args.rank_based_PER:
         return RankBuffer(args)
-    if not atari:
-        return Buffer(args)
-    return AtariBuffer(args)
+    return Buffer(args)
