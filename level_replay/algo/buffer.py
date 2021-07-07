@@ -2,21 +2,20 @@ import numpy as np
 import torch
 import math
 import random
-import operator
 
 from level_replay.algo.binary_heap import BinaryHeap
 
 
 class AbstractBuffer:
-    def __init__(self, state_dim, batch_size, buffer_size, device):
-        self.batch_size = batch_size
-        self.max_size = int(buffer_size)
-        self.device = device
+    def __init__(self, args):
+        self.batch_size = args.batch_size
+        self.max_size = int(args.memory_capacity)
+        self.device = args.device
 
         self.ptr = 0
         self.size = 0
 
-        self.state = np.zeros((self.max_size, *state_dim), dtype=np.uint8)
+        self.state = np.zeros((self.max_size, *args.state_dim), dtype=np.uint8)
         self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
@@ -34,9 +33,12 @@ class AbstractBuffer:
 
 
 class Buffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
-        super(Buffer, self).__init__(state_dim, batch_size, buffer_size, device)
-        self.prioritized = prioritized
+    def __init__(self, args):
+        super(Buffer, self).__init__(args)
+        self.prioritized = args.PER
+        num_updates = (
+            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
+        )
 
         if self.prioritized:
             self.tree = SumTree(self.max_size)
@@ -45,7 +47,7 @@ class Buffer(AbstractBuffer):
             self.beta_stepper = (1 - self.beta) / float(num_updates)
             self.alpha = args.alpha
 
-    def add(self, state, action, next_state, reward, done, seeds):
+    def add(self, state, action, next_state, reward, done, seeds, n):
         n_transitions = state.shape[0] if len(state.shape) == 4 else 1
         end = (self.ptr + n_transitions) % self.max_size
         if "cuda" in self.device.type:
@@ -127,8 +129,13 @@ class Buffer(AbstractBuffer):
 
 
 class RankBuffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
-        super(RankBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
+    def __init__(self, args):
+        super(RankBuffer, self).__init__(args)
+
+        self.prioritized = args.PER
+        num_updates = (
+            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
+        )
 
         self.beta = args.beta
         self.beta_stepper = (1 - self.beta) / float(num_updates)
@@ -232,138 +239,10 @@ class RankBuffer(AbstractBuffer):
         return rank_e_id, w
 
 
-class ReplayBuffer(object):
+class AutoEREBuffer(AbstractBuffer):
     def __init__(self, args):
-        self.max_size = int(args.memory_capacity)
-        self.state = np.zeros((self.max_size, *args.state_dim), dtype=np.uint8)
-        self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
-        self.next_state = np.array(self.state)
-        self.reward = np.zeros((self.max_size, 1))
-        self.not_done = np.zeros((self.max_size, 1), dtype=np.uint8)
-        self.seeds = np.zeros((self.max_size, 1), dtype=np.uint8)
-        self.batch_size = args.batch_size
-        self.size = 0
-        self.ptr = 0
-        self.device = args.device
-
-    def __len__(self):
-        return self.size
-
-    def _encode_transition(self, state, action, next_state, done, seed):
-        state = (state * 255).cpu().numpy().astype(np.uint8)
-        action = action.cpu().numpy().astype(np.uint8)
-        next_state = (next_state * 255).cpu().numpy().astype(np.uint8)
-        seed = seed.cpu().numpy().astype(np.uint8)
-        not_done = (1 - done).reshape(-1, 1)
-
-        return state, action, next_state, seed, not_done
-
-    def add(self, state, action, next_state, reward, done, seed):
-        state, action, next_state, seed, not_done = self._encode_transition(
-            state, action, next_state, done, seed
-        )
-
-        self.state[self.ptr] = state
-        self.action[self.ptr] = action
-        self.next_state[self.ptr] = next_state
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = not_done
-        self.seeds[self.ptr] = seed
-
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
-
-    def _encode_sample(self, idxes):
-        state = torch.FloatTensor(self.state[idxes]).to(self.device) / 255.0
-        action = torch.LongTensor(self.action[idxes]).to(self.device)
-        next_state = torch.FloatTensor(self.next_state[idxes]).to(self.device) / 255.0
-        reward = torch.FloatTensor(self.reward[idxes]).to(self.device)
-        not_done = torch.FloatTensor(self.not_done[idxes]).to(self.device)
-        seed = torch.LongTensor(self.seeds[idxes]).to(self.device)
-
-        return state, action, next_state, reward, not_done, seed, idxes
-
-    def sample(self):
-        idxes = [random.randint(0, self.size - 1) for _ in range(self.batch_size)]
-        return tuple(self._encode_sample(idxes) + [1])
-
-
-class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, args):
-        super(PrioritizedReplayBuffer, self).__init__(args)
-        num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-        self._alpha = args.alpha
-        self._beta = args.beta
-        self.beta_stepper = (1 - self._beta) / float(num_updates)
-
-        it_capacity = 1
-        while it_capacity < self.max_size:
-            it_capacity *= 2
-
-        self._it_sum = SumSegmentTree(it_capacity)
-        self._it_min = MinSegmentTree(it_capacity)
-        self._max_priority = 1.0
-
-    def add(self, *args, **kwargs):
-        idx = self.ptr
-        super().add(*args, **kwargs)
-        self._it_sum[idx] = self._max_priority ** self._alpha
-        self._it_min[idx] = self._max_priority ** self._alpha
-
-    def _sample_proportional(self, batch_size):
-        res = []
-        p_total = self._it_sum.sum(0, self.size - 1)
-        every_range_len = p_total / batch_size
-        for i in range(batch_size):
-            mass = random.random() * every_range_len + i * every_range_len
-            idx = self._it_sum.find_prefixsum_idx(mass)
-            res.append(idx)
-        return res
-
-    def sample(self):
-        idxes = self._sample_proportional(self.batch_size)
-
-        weights = []
-        p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * self.size) ** (-self._beta)
-
-        for idx in idxes:
-            p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * self.size) ** (-self._beta)
-            weights.append(weight / max_weight)
-        weights = torch.FloatTensor(np.array(weights)).to(self.device).reshape(-1, 1)
-        encoded_sample = self._encode_sample(idxes)
-
-        self._beta = min(self._beta + self.beta_stepper, 1)
-
-        return tuple(list(encoded_sample) + [weights])
-
-    def update_priority(self, idxes, priorities):
-        assert len(idxes) == len(priorities)
-        for idx, priority in zip(idxes, priorities):
-            assert priority > 0
-            assert 0 <= idx < self.size
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
-
-            self._max_priority = max(self._max_priority, priority)
-
-
-class AutoEREBuffer:
-    def __init__(self, state_dim, batch_size, buffer_size, device):
-        self.batch_size = batch_size
-        self.device = device
-
-        self.ptr, self.size, self.max_size = 0, 0, int(buffer_size)
+        super(AutoEREBuffer, self).__init__(args)
         self.eta_init = 0.995
-
-        self.state = np.zeros((self.max_size, *state_dim), dtype=np.uint8)
-        self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
-        self.next_state = np.array(self.state)
-        self.reward = np.zeros((self.max_size, 1))
-        self.not_done = np.zeros((self.max_size, 1), dtype=np.uint8)
-        self.seeds = np.zeros((self.max_size, 1), dtype=np.uint8)
-
         self.epoch_performance_buf = np.zeros(0, dtype=np.float32)
         self.current_epoch = 0
         self.max_history_improvement = 1e-5
@@ -511,10 +390,12 @@ class AutoEREBuffer:
 
 
 class AtariBuffer(AbstractBuffer):
-    def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, num_updates, args):
-        super(AtariBuffer, self).__init__(state_dim, batch_size, buffer_size, device)
-        self.prioritized = prioritized
-
+    def __init__(self, args):
+        super(AtariBuffer, self).__init__(args)
+        self.prioritized = args.PER
+        num_updates = (
+            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
+        )
         if self.prioritized:
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
@@ -578,76 +459,6 @@ class AtariBuffer(AbstractBuffer):
     def update_priority(self, ind, priority):
         self.max_priority = max(priority.max(), self.max_priority)
         self.tree.batch_set(ind, priority)
-
-
-class SegmentTree(object):
-    def __init__(self, capacity, operation, neutral_element):
-        assert capacity > 0 and capacity & (capacity - 1) == 0, "capacity must be positive and a power of 2."
-        self._capacity = capacity
-        self._value = [neutral_element for _ in range(2 * capacity)]
-        self._operation = operation
-
-    def _reduce_helper(self, start, end, node, node_start, node_end):
-        if start == node_start and end == node_end:
-            return self._value[node]
-        mid = (node_start + node_end) // 2
-        if end <= mid:
-            return self._reduce_helper(start, end, 2 * node, node_start, mid)
-        else:
-            if mid + 1 <= start:
-                return self._reduce_helper(start, end, 2 * node + 1, mid + 1, node_end)
-            else:
-                return self._operation(
-                    self._reduce_helper(start, mid, 2 * node, node_start, mid),
-                    self._reduce_helper(mid + 1, end, 2 * node + 1, mid + 1, node_end),
-                )
-
-    def reduce(self, start=0, end=None):
-        if end is None:
-            end = self._capacity
-        if end < 0:
-            end += self._capacity
-        end -= 1
-        return self._reduce_helper(start, end, 1, 0, self._capacity - 1)
-
-    def __setitem__(self, idx, val):
-        idx += self._capacity
-        self._value[idx] = val
-        idx //= 2
-        while idx >= 1:
-            self._value[idx] = self._operation(self._value[2 * idx], self._value[2 * idx + 1])
-            idx //= 2
-
-    def __getitem__(self, idx):
-        assert 0 <= idx < self._capacity
-        return self._value[self._capacity + idx]
-
-
-class SumSegmentTree(SegmentTree):
-    def __init__(self, capacity):
-        super(SumSegmentTree, self).__init__(capacity=capacity, operation=operator.add, neutral_element=0.0)
-
-    def sum(self, start=0, end=None):
-        return super(SumSegmentTree, self).reduce(start, end)
-
-    def find_prefixsum_idx(self, prefixsum):
-        assert 0 <= prefixsum <= self.sum() + 1e-5
-        idx = 1
-        while idx < self._capacity:  # while non-leaf
-            if self._value[2 * idx] > prefixsum:
-                idx = 2 * idx
-            else:
-                prefixsum -= self._value[2 * idx]
-                idx = 2 * idx + 1
-        return idx - self._capacity
-
-
-class MinSegmentTree(SegmentTree):
-    def __init__(self, capacity):
-        super(MinSegmentTree, self).__init__(capacity=capacity, operation=min, neutral_element=float("inf"))
-
-    def min(self, start=0, end=None):
-        return super(MinSegmentTree, self).reduce(start, end)
 
 
 # class PLRBuffer:
@@ -720,17 +531,9 @@ class SumTree(object):
             node_index //= 2
 
 
-def make_buffer(args, num_updates, atari=False):
-    if args.seg_tree_buffer:
-        return PrioritizedReplayBuffer(args)
+def make_buffer(args, atari=False):
     if args.rank_based_PER:
-        return RankBuffer(
-            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
-        )
+        return RankBuffer(args)
     if not atari:
-        return Buffer(
-            args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
-        )
-    return AtariBuffer(
-        args.state_dim, args.batch_size, args.memory_capacity, args.device, args.PER, num_updates, args
-    )
+        return Buffer(args)
+    return AtariBuffer(args)

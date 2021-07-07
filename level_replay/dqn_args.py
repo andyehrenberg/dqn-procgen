@@ -9,7 +9,7 @@ parser.add_argument(
 )
 parser.add_argument("--train_freq", type=int, default=4, help="Number of steps between DQN updates")
 parser.add_argument("--num_updates", type=int, default=1, help="Number of DQN updates to make at a time")
-parser.add_argument("--eval_freq", type=int, default=1000, help="Evaluation frequency")
+parser.add_argument("--eval_freq", type=int, default=2000, help="Evaluation frequency")
 parser.add_argument("--T_max", type=int, default=25e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
 
@@ -31,7 +31,7 @@ parser.add_argument("--target_update", type=int, default=1000, help="How often t
 parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
 parser.add_argument("--end_eps", type=float, default=0.1, help="end epsilon")
-parser.add_argument("--eps_decay_period", type=int, default=4000)
+parser.add_argument("--eps_decay_period", type=int, default=8000)
 parser.add_argument("--eval_eps", type=float, default=0.05)
 parser.add_argument("--min_priority", type=float, default=1e-1)
 parser.add_argument("--V_min", type=float, default=0)
@@ -57,12 +57,6 @@ parser.add_argument("--gamma", type=float, default=0.999)
 parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, help="Whether to use PER")
 parser.add_argument(
     "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
-)
-parser.add_argument(
-    "--seg_tree_buffer",
-    type=lambda x: bool(strtobool(x)),
-    default=False,
-    help="Whether to use new PER implementation",
 )
 parser.add_argument("--beta", type=float, default=0.4, help="Beta value for PER")
 parser.add_argument("--alpha", type=float, default=0.5)
