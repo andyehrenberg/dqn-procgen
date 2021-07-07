@@ -5,7 +5,6 @@ from typing import List
 
 import numpy as np
 import torch
-from tqdm import trange
 
 import wandb
 from level_replay import utils
@@ -60,9 +59,7 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-
-    replay_buffer = make_buffer(args, num_updates)
+    replay_buffer = make_buffer(args)
 
     agent = DDQN(args)
 
@@ -92,9 +89,7 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    loop = trange if args.interactive else range
-
-    for t in loop(num_steps):
+    for t in range(num_steps):
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -127,6 +122,14 @@ def train(args, seeds):
                 replay_buffer.add(
                     n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
                 )
+                if done[i]:
+                    for j in range(1, args.multi_step):
+                        n_reward = multi_step_reward(reward_deque[i][j:], args.gamma)
+                        n_state = state_deque[i][j]
+                        n_action = action_deque[i][j]
+                        replay_buffer.add(
+                            n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                        )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
                 wandb.log(
@@ -168,7 +171,7 @@ def train(args, seeds):
             )
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
-            mean_eval_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
+            mean_test_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
             mean_train_rewards = np.mean(
                 eval_policy(
                     args,
@@ -181,10 +184,11 @@ def train(args, seeds):
             )
             wandb.log(
                 {
-                    "Test Evaluation Returns": mean_eval_rewards,
+                    "Test Evaluation Returns": mean_test_rewards,
                     "Train Evaluation Returns": mean_train_rewards,
+                    "Generalization Gap:": mean_train_rewards - mean_test_rewards,
                     "Test Evaluation Returns (normalised)": ppo_normalise_reward(
-                        mean_eval_rewards, args.env_name
+                        mean_test_rewards, args.env_name
                     ),
                     "Train Evaluation Returns (normalised)": ppo_normalise_reward(
                         mean_train_rewards, args.env_name

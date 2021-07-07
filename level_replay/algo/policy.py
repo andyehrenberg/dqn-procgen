@@ -220,7 +220,7 @@ class DDQN(object):
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
         grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
-        # clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
         self.Q_optimizer.step()
 
         # Update target network by polyak or full copy every X iterations.
