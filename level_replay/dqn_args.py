@@ -59,7 +59,7 @@ parser.add_argument(
     "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
 )
 parser.add_argument("--beta", type=float, default=0.4, help="Beta value for PER")
-parser.add_argument("--alpha", type=float, default=0.5)
+parser.add_argument("--alpha", type=float, default=0.5, help="Alpha value for PER")
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)
