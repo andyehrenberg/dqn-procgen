@@ -56,6 +56,7 @@ def train(args, seeds):
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
+        use_sequential_levels=args.use_sequential_levels,
         level_sampler_args=level_sampler_args,
     )
 
@@ -78,6 +79,10 @@ def train(args, seeds):
 
     num_steps = int(args.T_max // args.num_processes)
 
+    value = [torch.tensor(0) for _ in range(args.num_processes)]
+    recent_returns = {seed: 0 for seed in seeds}
+    s0_value_estimates = {seed: 0 for seed in seeds}
+
     loss, grad_magnitude = None, None
 
     epsilon_start = 1.0
@@ -98,7 +103,7 @@ def train(args, seeds):
             )
         else:
             cur_epsilon = epsilon(t)
-            action, _ = agent.select_action(state)
+            action, value = agent.select_action(state)
             for i in range(args.num_processes):
                 if np.random.uniform() < cur_epsilon:
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
@@ -111,7 +116,10 @@ def train(args, seeds):
             if "bad_transition" in info.keys():
                 print("Bad transition")
             if level_sampler:
-                level_seeds[i][0] = info["level_seed"]
+                level_seed = info["level_seed"]
+                if level_seeds[i][0] != level_seed:
+                    level_seeds[i][0] = level_seed
+                    new_episode(s0_value_estimates, value, level_seed, i, step=t * args.num_processes)
             state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
@@ -124,7 +132,9 @@ def train(args, seeds):
                 )
                 if done[i]:
                     for j in range(1, args.multi_step):
-                        n_reward = multi_step_reward([reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma)
+                        n_reward = multi_step_reward(
+                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
+                        )
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
@@ -144,6 +154,9 @@ def train(args, seeds):
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
+                plot_level_returns(
+                    recent_returns, level_seeds, episode_reward, i, step=t * args.num_processes
+                )
 
         state = next_state
 
@@ -317,6 +330,19 @@ def multi_step_reward(rewards, gamma):
     for idx, reward in enumerate(rewards):
         ret += reward * (gamma ** idx)
     return ret
+
+
+def new_episode(s0_value_estimates, value, level_seed, i, step):
+    s0_value_estimates[level_seed] = value[i].item()
+    wandb.log(
+        {f"Start State Value Estimate for Level {level_seed}": s0_value_estimates[level_seed]}, step=step
+    )
+
+
+def plot_level_returns(recent_returns, level_seeds, episode_reward, i, step):
+    seed = level_seeds[i][0].item()
+    recent_returns[seed] = episode_reward
+    wandb.log({f"Empirical Return for Level {seed}": recent_returns[seed]}, step=step)
 
 
 if __name__ == "__main__":
