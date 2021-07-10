@@ -10,6 +10,7 @@
 # https://github.com/rraileanu/auto-drac/blob/master/ucb_rl2_meta/arguments.py
 
 import argparse
+from distutils.util import strtobool
 
 parser = argparse.ArgumentParser(description="RL")
 
@@ -47,6 +48,7 @@ parser.add_argument("--paint_vel_info", action="store_true", help="Paint velocit
 parser.add_argument(
     "--num_train_seeds", type=int, default=200, help="number of Procgen levels to use for training"
 )
+parser.add_argument("--use_sequential_levels", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--start_level", type=int, default=0, help="start level id for sampling Procgen levels")
 parser.add_argument("--num_test_seeds", type=int, default=10, help="Number of test seeds")
 parser.add_argument("--final_num_test_seeds", type=int, default=1000, help="Number of test seeds")

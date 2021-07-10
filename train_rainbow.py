@@ -56,6 +56,7 @@ def train(args, seeds):
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
+        use_sequential_levels=args.use_sequential_levels,
         level_sampler_args=level_sampler_args,
     )
 
@@ -79,8 +80,8 @@ def train(args, seeds):
     num_steps = int(args.T_max // args.num_processes)
 
     value = [0 for _ in range(args.num_processes)]
-    recent_returns = {seed : 0 for seed in seeds}
-    s0_value_estimates = {seed : 0 for seed in seeds}
+    recent_returns = {seed: 0 for seed in seeds}
+    s0_value_estimates = {seed: 0 for seed in seeds}
 
     loss, grad_magnitude = None, None
 
@@ -131,7 +132,9 @@ def train(args, seeds):
                 )
                 if done[i]:
                     for j in range(1, args.multi_step):
-                        n_reward = multi_step_reward([reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma)
+                        n_reward = multi_step_reward(
+                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
+                        )
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(

@@ -86,6 +86,7 @@ def train(args, seeds):
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
+        use_sequential_levels=args.use_sequential_levels,
         level_sampler_args=level_sampler_args,
     )
 

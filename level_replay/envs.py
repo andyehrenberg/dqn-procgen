@@ -423,6 +423,7 @@ def make_lr_venv(num_envs, env_name, seeds, device, **kwargs):
         start_level = kwargs.get("start_level", 0)
         distribution_mode = kwargs.get("distribution_mode", "easy")
         paint_vel_info = kwargs.get("paint_vel_info", False)
+        use_sequential_levels = kwargs.get("use_sequential_levels", False)
 
         venv = ProcgenEnv(
             num_envs=num_envs,
@@ -431,6 +432,7 @@ def make_lr_venv(num_envs, env_name, seeds, device, **kwargs):
             start_level=start_level,
             distribution_mode=distribution_mode,
             paint_vel_info=paint_vel_info,
+            use_sequential_levels=use_sequential_levels,
         )
         venv = VecExtractDictObs(venv, "rgb")
         venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
