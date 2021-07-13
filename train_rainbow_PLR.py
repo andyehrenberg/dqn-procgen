@@ -1,26 +1,23 @@
 import logging
 import os
-import sys
-import time
 from collections import deque
 from typing import List
 
 import numpy as np
 import torch
 import wandb
-from tqdm import trange
 
-from baselines.logger import HumanOutputFormat
 from level_replay import utils
-from level_replay.algo.buffer import make_buffer
+from level_replay.algo.buffer import make_buffer, RolloutStorage
 from level_replay.algo.policy import DDQN
 from level_replay.dqn_args import parser
-from level_replay.envs import make_lr_venv
-from level_replay.file_writer import FileWriter
+from level_replay.envs import make_dqn_lr_venv
+from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
 last_checkpoint_time = None
+
 
 def train(args, seeds):
     global last_checkpoint_time
@@ -35,31 +32,14 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
-    # Configure logging
-    if not args.wandb:
-        if args.xpid is None:
-            args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
-        log_dir = os.path.expandvars(os.path.expanduser(args.log_dir))
-        plogger = FileWriter(
-            xpid=args.xpid,
-            xp_args=args.__dict__,
-            rootdir=log_dir,
-            seeds=seeds,
-        )
-        _ = HumanOutputFormat(sys.stdout)
-
-        # checkpointpath = os.path.expandvars(
-        # os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar"))
-        # )
-
-    else:
-        wandb.init(
-            settings=wandb.Settings(start_method="fork"),
-            project="off-policy-procgen",
-            entity="ucl-dark",
-            config=vars(args),
-            tags=["ddqn", "procgen"],
-        )
+    wandb.init(
+        settings=wandb.Settings(start_method="fork"),
+        project="off-policy-procgen",
+        entity="ucl-dark",
+        config=vars(args),
+        tags=["ddqn", "procgen", "PLR"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
+        group=args.wandb_group,
+    )
 
     num_levels = 1
     level_sampler_args = dict(
@@ -76,7 +56,7 @@ def train(args, seeds):
         staleness_transform=args.staleness_transform,
         staleness_temperature=args.staleness_temperature,
     )
-    envs, level_sampler = make_lr_venv(
+    envs, level_sampler = make_dqn_lr_venv(
         num_envs=args.num_processes,
         env_name=args.env_name,
         seeds=seeds,
@@ -86,12 +66,14 @@ def train(args, seeds):
         no_ret_normalization=args.no_ret_normalization,
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
+        use_sequential_levels=args.use_sequential_levels,
         level_sampler_args=level_sampler_args,
     )
 
-    num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-
-    replay_buffer = make_buffer(args, num_updates)
+    replay_buffer = make_buffer(args)
+    rollouts = RolloutStorage(
+        args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
+    )
 
     agent = DDQN(args)
 
@@ -101,7 +83,6 @@ def train(args, seeds):
     else:
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
-    episode_rewards: deque = deque(maxlen=10)
 
     episode_reward = 0
 
@@ -111,134 +92,188 @@ def train(args, seeds):
 
     num_steps = int(args.T_max // args.num_processes)
 
-    # timer = timeit.default_timer
-    # update_start_time = timer()
+    recent_returns = {seed: 0 for seed in seeds}
+    s0_value_estimates = {seed: 0 for seed in seeds}
 
     loss, grad_magnitude = None, None
 
     epsilon_start = 1.0
-    epsilon_final = 0.1
-    epsilon_decay = 2500
+    epsilon_final = args.end_eps
+    epsilon_decay = args.eps_decay_period
 
     def epsilon(t):
         return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    barchart_plot_timesteps = [int(i*num_steps/10) for i in range(1, 10)]
-    barchart_counter = 0
-    next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
-
-    for t in trange(num_steps):
-        action = None
-        if t < args.start_timesteps or np.random.uniform() < epsilon(t):
+    for t in range(num_steps):
+        if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
                 .reshape(-1, 1)
                 .to(args.device)
             )
+            value = agent.get_value(state)
         else:
-            action, _ = agent.select_action(state)
+            cur_epsilon = epsilon(t)
+            action, value = agent.select_action(state)
+            for i in range(args.num_processes):
+                if np.random.uniform() < cur_epsilon:
+                    action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
+            wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
+        masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
 
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():
                 print("Bad transition")
+            if level_sampler:
+                level_seed = info["level_seed"]
+                if level_seeds[i][0] != level_seed:
+                    level_seeds[i][0] = level_seed
+                    new_episode(s0_value_estimates, value, level_seed, i, step=t * args.num_processes)
+            state_deque[i].append(state[i])
+            reward_deque[i].append(reward[i])
+            action_deque[i].append(action[i])
+            if len(state_deque[i]) == args.multi_step or done[i]:
+                n_reward = multi_step_reward(reward_deque[i], args.gamma)
+                n_state = state_deque[i][0]
+                n_action = action_deque[i][0]
+                replay_buffer.add(
+                    n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                )
+                if done[i]:
+                    for j in range(1, args.multi_step):
+                        n_reward = multi_step_reward(
+                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
+                        )
+                        n_state = state_deque[i][j]
+                        n_action = action_deque[i][j]
+                        replay_buffer.add(
+                            n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                        )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
-                episode_rewards.append(episode_reward)
-                if args.wandb:
-                    wandb.log({"Train Episode Returns": episode_reward}, step=t * args.num_processes)
+                wandb.log(
+                    {
+                        "Train Episode Returns": episode_reward,
+                        "Train Episode Returns (normalised)": ppo_normalise_reward(
+                            episode_reward, args.env_name
+                        ),
+                    },
+                    step=t * args.num_processes,
+                )
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
-            if level_sampler:
-                level_seeds[i][0] = info["level_seed"]
+                plot_level_returns(
+                    recent_returns, level_seeds, episode_reward, i, step=t * args.num_processes
+                )
 
-        if args.multi_step == 1:
-            replay_buffer.add(state, action, next_state, reward, np.uint8(done), level_seeds)
-        else:
-            for i in range(args.num_processes):
-                state_deque[i].append(state[i])
-                reward_deque[i].append(reward[i])
-                action_deque[i].append(action[i])
-                if len(state_deque[i]) == args.multi_step or done[i]:
-                    n_reward = multi_step_reward(reward_deque[i], args.gamma)
-                    n_state = state_deque[i][0]
-                    n_action = action_deque[i][0]
-                    replay_buffer.add(
-                        n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
-                    )
+        rollouts.insert(state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
 
         state = next_state
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            loss, grad_magnitude = agent.train(replay_buffer)
-            if args.wandb:
+            for _ in range(args.num_updates):
+                loss, grad_magnitude = agent.train(replay_buffer)
                 wandb.log(
                     {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
                 )
 
-        if t == next_barchart_timestep or t == num_steps - 1:
-            if args.wandb:
-                count_data = [[seed, count] for (seed, count) in zip(agent.seed_counts.keys(), agent.seed_counts.values())]
-                table = wandb.Table(data = count_data, columns = ["Seed", "Count"])
-                wandb.log(
-                    {"Seed Sampling Distribution at Time {}".format(t): wandb.plot.bar(table, "Level", "Count", title = "Sampling distribution of levels")}
-                )
-            barchart_counter = barchart_counter + 1 if barchart_counter < len(barchart_plot_timesteps) - 1 else barchart_counter
-            next_barchart_timestep = barchart_plot_timesteps[barchart_counter]
+        if (rollouts.step + 1) == rollouts.num_steps:
+            obs_id = rollouts.obs[-1]
+            next_value = agent.get_value(obs_id).unsqueeze(1).detach()
 
-        if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
-            if not args.wandb:
-                logging.info(f"\nUpdate {t//args.train_freq} done, {t} steps\n  ")
-                logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
-            eval_episode_rewards = eval_policy(args, agent, args.num_test_seeds)
-            if not args.wandb:
-                logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
-            train_eval_episode_rewards = eval_policy(
-                args, agent, args.num_test_seeds, start_level=0, num_levels=args.num_train_seeds, seeds=seeds
+            rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
+
+            if level_sampler:
+                level_sampler.update_with_rollouts(rollouts)
+
+            rollouts.after_update()
+
+            if level_sampler:
+                level_sampler.after_update()
+
+        if t == num_steps - 1:
+            count_data = [
+                [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
+            ]
+            total_weight = sum([i[1] for i in count_data])
+            count_data = [[i[0], i[1] / total_weight] for i in count_data]
+            table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
+            wandb.log(
+                {
+                    "Seed Sampling Distribution at End of Training": wandb.plot.bar(
+                        table, "Seed", "Weight", title="Sampling distribution of levels"
+                    )
+                }
             )
 
-            if args.wandb:
-                wandb.log(
-                    {
-                        "Test Evaluation Returns": np.mean(eval_episode_rewards),
-                        "Train Evaluation Returns": np.mean(train_eval_episode_rewards),
-                    },
-                    step=t * args.num_processes,
-                    commit=False
+        if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
+            mean_test_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
+            mean_train_rewards = np.mean(
+                eval_policy(
+                    args,
+                    agent,
+                    args.num_test_seeds,
+                    start_level=0,
+                    num_levels=args.num_train_seeds,
+                    seeds=seeds,
                 )
-
-            else:
-                stats = {
-                    "step": t,
-                    "value_loss": loss,
-                    "grad_magnitude": grad_magnitude,
-                    "train:mean_episode_return": np.mean(episode_rewards),
-                    "test:mean_episode_return": np.mean(eval_episode_rewards),
-                    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards)
+            )
+            wandb.log(
+                {
+                    "Test Evaluation Returns": mean_test_rewards,
+                    "Train Evaluation Returns": mean_train_rewards,
+                    "Generalization Gap:": mean_train_rewards - mean_test_rewards,
+                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_test_rewards, args.env_name
+                    ),
+                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_train_rewards, args.env_name
+                    ),
                 }
+            )
 
-                if t == num_updates - 1:
-                    logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
-                    final_eval_episode_rewards = eval_policy(args, agent, args.final_num_test_seeds)
+    print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
+    final_eval_episode_rewards = eval_policy(
+        args, agent, args.final_num_test_seeds, record=args.record_final_eval
+    )
 
-                    mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
-                    median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
+    mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
+    median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
 
-                    plogger.log_final_test_eval(
-                        {
-                            "num_test_seeds": args.final_num_test_seeds,
-                            "mean_episode_return": mean_final_eval_episode_rewards,
-                            "median_episode_return": median_final_eval_episide_rewards,
-                        }
-                    )
+    print("Mean Final Evaluation Rewards: ", mean_final_eval_episode_rewards)
+    print("Median Final Evaluation Rewards: ", median_final_eval_episide_rewards)
 
-                plogger.log(stats)
+    wandb.log(
+        {
+            "Mean Final Evaluation Rewards": mean_final_eval_episode_rewards,
+            "Median Final Evaluation Rewards": median_final_eval_episide_rewards,
+            "Mean Final Evaluation Rewards (normalised)": ppo_normalise_reward(
+                mean_final_eval_episode_rewards, args.env_name
+            ),
+            "Median Final Evaluation Rewards (normalised)": ppo_normalise_reward(
+                median_final_eval_episide_rewards, args.env_name
+            ),
+        }
+    )
+
+    if args.save_model:
+        print(f"Saving model to {args.model_path}")
+        if "models" not in os.listdir():
+            os.mkdir("models")
+        torch.save(
+            {
+                "model_state_dict": agent.Q.state_dict(),
+                "args": vars(args),
+            },
+            args.model_path,
+        )
 
 
 def generate_seeds(num_seeds, base_seed=0):
@@ -262,12 +297,13 @@ def eval_policy(
     seeds=None,
     level_sampler=None,
     progressbar=None,
+    record=False,
 ):
     if level_sampler:
         start_level = level_sampler.seed_range()[0]
         num_levels = 1
 
-    eval_envs, level_sampler = make_lr_venv(
+    eval_envs, level_sampler = make_dqn_lr_venv(
         num_envs=num_processes,
         env_name=args.env_name,
         seeds=seeds,
@@ -278,7 +314,7 @@ def eval_policy(
         distribution_mode=args.distribution_mode,
         paint_vel_info=args.paint_vel_info,
         level_sampler=level_sampler,
-        record_runs=True,
+        record_runs=record,
     )
 
     eval_episode_rewards: List[float] = []
@@ -287,8 +323,7 @@ def eval_policy(
     else:
         state = eval_envs.reset()
     while len(eval_episode_rewards) < num_episodes:
-        action = None
-        if np.random.uniform() < 0.05:
+        if np.random.uniform() < args.eval_eps:
             action = (
                 torch.LongTensor([eval_envs.action_space.sample() for _ in range(num_processes)])
                 .reshape(-1, 1)
@@ -296,7 +331,7 @@ def eval_policy(
             )
         else:
             with torch.no_grad():
-                action, q = policy.select_action(state, eval=True)
+                action, _ = policy.select_action(state, eval=True)
         state, _, done, infos = eval_envs.step(action)
         for info in infos:
             if "episode" in info.keys():
@@ -304,8 +339,9 @@ def eval_policy(
                 if progressbar:
                     progressbar.update(1)
 
-    for video in eval_envs.get_videos():
-        wandb.log({"evaluation_behaviour": video})
+    if record:
+        for video in eval_envs.get_videos():
+            wandb.log({"evaluation_behaviour": video})
 
     eval_envs.close()
     if progressbar:
@@ -324,6 +360,19 @@ def multi_step_reward(rewards, gamma):
     for idx, reward in enumerate(rewards):
         ret += reward * (gamma ** idx)
     return ret
+
+
+def new_episode(s0_value_estimates, value, level_seed, i, step):
+    s0_value_estimates[level_seed] = value[i].item()
+    wandb.log(
+        {f"Start State Value Estimate for Level {level_seed}": s0_value_estimates[level_seed]}, step=step
+    )
+
+
+def plot_level_returns(recent_returns, level_seeds, episode_reward, i, step):
+    seed = level_seeds[i][0].item()
+    recent_returns[seed] = episode_reward
+    wandb.log({f"Empirical Return for Level {seed}": recent_returns[seed]}, step=step)
 
 
 if __name__ == "__main__":

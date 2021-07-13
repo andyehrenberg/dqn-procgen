@@ -185,7 +185,7 @@ class DDQN(object):
             action = q.argmax(1).reshape(-1, 1)
             return action, q.max(1)[0]
 
-    def value(self, state):
+    def get_value(self, state):
         with torch.no_grad():
             q = self.Q(state)
             value = q.max(1)[0]

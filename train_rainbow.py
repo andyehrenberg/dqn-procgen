@@ -79,7 +79,6 @@ def train(args, seeds):
 
     num_steps = int(args.T_max // args.num_processes)
 
-    value = [torch.tensor(0) for _ in range(args.num_processes)]
     recent_returns = {seed: 0 for seed in seeds}
     s0_value_estimates = {seed: 0 for seed in seeds}
 
@@ -101,6 +100,7 @@ def train(args, seeds):
                 .reshape(-1, 1)
                 .to(args.device)
             )
+            value = agent.get_value(state)
         else:
             cur_epsilon = epsilon(t)
             action, value = agent.select_action(state)
