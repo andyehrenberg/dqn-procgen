@@ -84,6 +84,9 @@ def train(args, seeds):
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
 
+    rollouts.obs[0].copy_(state)
+    rollouts.to(args.device)
+
     episode_reward = 0
 
     state_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
@@ -172,7 +175,7 @@ def train(args, seeds):
                     recent_returns, level_seeds, episode_reward, i, step=t * args.num_processes
                 )
 
-        rollouts.insert(state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
+        rollouts.insert(next_state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
 
         state = next_state
 
