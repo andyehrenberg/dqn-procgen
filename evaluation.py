@@ -1,21 +1,13 @@
-import logging
-import os
-from collections import deque
-from typing import List
-
 import numpy as np
 import torch
 import wandb
-from tqdm import trange
 
-from level_replay import utils
-from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN
-from level_replay.envs import make_lr_venv
 from train_rainbow import eval_policy, generate_seeds
 
 import argparse
 from distutils.util import strtobool
+
 
 def construct_class_from_dict(d):
     class Args:
@@ -27,12 +19,13 @@ def construct_class_from_dict(d):
 
     return args
 
+
 def evaluate(args):
     dictionary = torch.load(args.model_path)
-    model_state_dict = dictionary['model_state_dict']
-    arg_dict = dictionary['args']
+    model_state_dict = dictionary["model_state_dict"]
+    arg_dict = dictionary["args"]
 
-    model_args = construct_class_from_dict(d['args'])
+    model_args = construct_class_from_dict(arg_dict)
 
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
@@ -40,7 +33,7 @@ def evaluate(args):
         entity="ucl-dark",
         config=vars(model_args),
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
-        group='Evaluations',
+        group="Evaluations",
     )
 
     agent = DDQN(model_args)
@@ -65,8 +58,11 @@ def evaluate(args):
         table = wandb.Table(data=train_eval_episode_rewards, columns=["Train Level", "Evaluation Rewards"])
         wandb.log(
             {
-                "Train Evaluations for Each Training Level" wandb.plot.bar(
-                    table, "Train Leevel", "Evaluation Rewards", title = "Train Evaluations for Each Training Level"
+                "Train Evaluations for Each Training Level": wandb.plot.bar(
+                    table,
+                    "Train Level",
+                    "Evaluation Rewards",
+                    title="Train Evaluations for Each Training Level",
                 )
             }
         )
@@ -74,7 +70,12 @@ def evaluate(args):
     else:
         seeds = generate_seeds(args.num_train_seeds)
         train_eval_episode_rewards = eval_policy(
-            model_args, agent, model_args.num_test_seeds, start_level=0, num_levels=model_args.num_train_seeds, seeds=seeds
+            model_args,
+            agent,
+            model_args.num_test_seeds,
+            start_level=0,
+            num_levels=model_args.num_train_seeds,
+            seeds=seeds,
         )
         wandb.log(
             {
@@ -82,17 +83,19 @@ def evaluate(args):
             }
         )
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DQN")
 
+    parser.add_argument("--model_path", default="model/model.tar", help="Path to pre-trained model")
     parser.add_argument(
-        "--model_path", default='model/model.tar', help="Path to pre-trained model"
+        "--test", type=lambda x: bool(strtobool(x)), default=True, help="Whether to evaluate on unseen levels"
     )
     parser.add_argument(
-        "--test", type=lambda x: bool(strtobool(x)), default = True, help="Whether to evaluate on unseen levels"
-    )
-    parser.add_argument(
-        "--each_train_level", type=lambda x: bool(strtobool(x)), default = False, help="Whether to get score for each train level"
+        "--each_train_level",
+        type=lambda x: bool(strtobool(x)),
+        default=False,
+        help="Whether to get score for each train level",
     )
 
     parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
