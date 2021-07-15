@@ -157,7 +157,7 @@ class LevelSampler:
         total_steps, num_actors = policy_logits.shape[:2]
 
         for actor_index in range(num_actors):
-            done_steps = done[:, actor_index].nonzero()[:total_steps, 0]
+            done_steps = torch.nonzero(done[:, actor_index], as_tuple=False)[:total_steps, 0]
             start_t = 0
 
             for t in done_steps:

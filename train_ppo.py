@@ -7,7 +7,6 @@
 import logging
 import os
 import time
-import timeit
 from collections import deque
 from test import evaluate
 
@@ -141,8 +140,6 @@ def train(args, seeds):
     episode_rewards: deque = deque(maxlen=10)
     num_updates = int(args.num_env_steps) // args.num_steps // args.num_processes
 
-    timer = timeit.default_timer
-    # update_start_time = timer()
     count = 0
     for j in range(num_updates):
         actor_critic.train()
@@ -215,22 +212,8 @@ def train(args, seeds):
 
         # Log stats every log_interval updates or if it is the last update
         if (j % args.log_interval == 0 and len(episode_rewards) > 1) or j == num_updates - 1:
-            # total_num_steps = (j + 1) * args.num_processes * args.num_steps
-
-            # update_end_time = timer()
-            # num_interval_updates = 1 if j == 0 else args.log_interval
-            # sps = (
-            #     num_interval_updates
-            #     * (args.num_processes * args.num_steps)
-            #     / (update_end_time - update_start_time)
-            # )
-            # update_start_time = update_end_time
-
-            # logging.info(f"\nUpdate {j} done, {total_num_steps} steps\n  ")
-            # logging.info(f"\nEvaluating on {args.num_test_seeds} test levels...\n  ")
             mean_eval_rewards = np.mean(evaluate(args, actor_critic, args.num_test_seeds, device))
 
-            # logging.info(f"\nEvaluating on {args.num_test_seeds} train levels...\n  ")
             mean_train_rewards = np.mean(
                 evaluate(
                     args,
@@ -257,25 +240,6 @@ def train(args, seeds):
                 step=count * args.num_processes,
             )
 
-            # stats = {
-            #    "step": total_num_steps,
-            #    "pg_loss": action_loss,
-            #    "value_loss": value_loss,
-            #    "dist_entropy": dist_entropy,
-            #    "train:mean_episode_return": np.mean(episode_rewards),
-            #    "train:median_episode_return": np.median(episode_rewards),
-            #    "test:mean_episode_return": np.mean(eval_episode_rewards),
-            #    "test:median_episode_return": np.median(eval_episode_rewards),
-            #    "train_eval:mean_episode_return": np.mean(train_eval_episode_rewards),
-            #    "train_eval:median_episode_return": np.median(train_eval_episode_rewards),
-            #    "sps": sps,
-            # }
-
-            # if is_minigrid:
-            #     stats["train:success_rate"] = np.mean(np.array(episode_rewards) > 0)
-            #     stats["train_eval:success_rate"] = np.mean(np.array(train_eval_episode_rewards) > 0)
-            #     stats["test:success_rate"] = np.mean(np.array(eval_episode_rewards) > 0)
-
             if j == num_updates - 1:
                 print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
                 # logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
@@ -294,34 +258,17 @@ def train(args, seeds):
                     }
                 )
 
-                # plogger.log_final_test_eval(
-                #    {
-                #        "num_test_seeds": args.final_num_test_seeds,
-                #        "mean_episode_return": mean_final_eval_episode_rewards,
-                #        "median_episode_return": median_final_eval_episide_rewards,
-                #    }
-                # )
-
-            # plogger.log(stats)
-            # if args.verbose:
-            # stdout_logger.writekvs(stats)
-
-        # Log level weights
-        # if level_sampler and j % args.weight_log_interval == 0:
-        # plogger.log_level_weights(level_sampler.sample_weights())
-
-        # Checkpoint
-        timer = timeit.default_timer
-        if last_checkpoint_time is None:
-            last_checkpoint_time = timer()
-        # try:
-        #    if j == num_updates - 1 or (
-        #        args.save_interval > 0 and timer() - last_checkpoint_time > args.save_interval * 60
-        #    ):  # Save every 10 min.
-        #        checkpoint()
-        #        last_checkpoint_time = timer()
-        # except KeyboardInterrupt:
-        #    return
+        if args.save_model:
+            print(f"Saving model to {args.model_path}")
+            if "models" not in os.listdir():
+                os.mkdir("models")
+            torch.save(
+                {
+                    "model_state_dict": agent.Q.state_dict(),
+                    "args": vars(args),
+                },
+                args.model_path,
+            )
 
 
 def generate_seeds(num_seeds, base_seed=0):

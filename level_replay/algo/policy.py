@@ -239,6 +239,39 @@ class DDQN(object):
 
         return loss, grad_magnitude
 
+    def train_with_online_target(self, replay_buffer, online):
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+
+        for idx, seed in enumerate(seeds):
+            s = seed.cpu().numpy()[0]
+            if self.PER:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+            else:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+
+        with torch.no_grad():
+            target_Q = reward + not_done * (self.discount ** self.n_step) * online.get_value(next_state, 0, 0)
+
+        current_Q = self.Q(state).gather(1, action)
+
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
+
+        self.Q_optimizer.zero_grad()
+        loss.backward()  # Backpropagate importance-weighted minibatch loss
+        grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        self.Q_optimizer.step()
+
+        # Update target network by polyak or full copy every X iterations.
+        self.iterations += 1
+        self.maybe_update_target()
+
+        if self.PER:
+            priority = ((current_Q - target_Q).abs() + 1e-10).cpu().data.numpy().flatten()
+            replay_buffer.update_priority(ind, priority)
+
+        return loss, grad_magnitude
+
     def huber(self, x):
         return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
 
