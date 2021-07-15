@@ -444,7 +444,7 @@ class DQNLevelSampler:
     def _update_with_rollouts(self, rollouts, score_function):
         level_seeds = rollouts.level_seeds
         done = ~(rollouts.masks > 0)
-        total_steps, num_actors = rollouts.value_preds.shape[:2]
+        total_steps, num_actors = rollouts.rewards.shape[:2]
 
         for actor_index in range(num_actors):
             done_steps = torch.nonzero(done[:, actor_index], as_tuple=False)[:total_steps, 0]
@@ -468,7 +468,7 @@ class DQNLevelSampler:
                     score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:t, actor_index]
 
                 score = score_function(**score_function_kwargs)
-                num_steps = len(score_function_kwargs["value_preds"])
+                num_steps = len(rollouts.rewards[start_t:t, actor_index])
                 self.update_seed_score(actor_index, seed_idx_t, score, num_steps)
 
                 start_t = t.item()
@@ -485,7 +485,7 @@ class DQNLevelSampler:
                     score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:, actor_index]
 
                 score = score_function(**score_function_kwargs)
-                num_steps = len(rollouts.value_preds[start_t:, actor_index])
+                num_steps = len(rollouts.rewards[start_t:t, actor_index])
                 self._partial_update_seed_score(actor_index, seed_idx_t, score, num_steps)
 
     def after_update(self):
