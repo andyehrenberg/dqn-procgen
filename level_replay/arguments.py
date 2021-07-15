@@ -127,6 +127,8 @@ parser.add_argument(
     "--weight_log_interval", type=int, default=1, help="Save level weights every this many updates"
 )
 parser.add_argument("--disable_checkpoint", action="store_true", help="Disable saving checkpoint.")
+parser.add_argument("--save_model", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--model_path", default="models/model.tar")
 
 
 parser.add_argument(
