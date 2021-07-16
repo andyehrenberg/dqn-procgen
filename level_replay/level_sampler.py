@@ -485,7 +485,7 @@ class DQNLevelSampler:
                     score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:, actor_index]
 
                 score = score_function(**score_function_kwargs)
-                num_steps = len(rollouts.rewards[start_t:t, actor_index])
+                num_steps = len(rollouts.rewards[start_t:, actor_index])
                 self._partial_update_seed_score(actor_index, seed_idx_t, score, num_steps)
 
     def after_update(self):
