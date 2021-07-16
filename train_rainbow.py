@@ -9,7 +9,7 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import DDQN
+from level_replay.algo.policy import DDQN, Rainbow
 from level_replay.dqn_args import parser
 from level_replay.envs import make_lr_venv
 from level_replay.utils import ppo_normalise_reward
@@ -62,7 +62,10 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args)
 
-    agent = DDQN(args)
+    if args.rainbow:
+        agent = Rainbow(args)
+    else:
+        agent = DDQN(args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
