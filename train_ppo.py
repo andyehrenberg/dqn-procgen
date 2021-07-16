@@ -264,7 +264,7 @@ def train(args, seeds):
                 os.mkdir("models")
             torch.save(
                 {
-                    "model_state_dict": agent.Q.state_dict(),
+                    "model_state_dict": actor_critic.state_dict(),
                     "args": vars(args),
                 },
                 args.model_path,
