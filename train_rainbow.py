@@ -296,7 +296,7 @@ def eval_policy(
     else:
         state = eval_envs.reset()
     while len(eval_episode_rewards) < num_episodes:
-        if np.random.uniform() < args.eval_eps:
+        if not deterministic and np.random.uniform() < args.eval_eps:
             action = (
                 torch.LongTensor([eval_envs.action_space.sample() for _ in range(num_processes)])
                 .reshape(-1, 1)

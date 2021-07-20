@@ -17,9 +17,8 @@ parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max t
 parser.add_argument("--rainbow", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
 parser.add_argument("--num_actions", type=int, default=15, help="Action space dimension")
-parser.add_argument("--state_dim", type=tuple, default=(3, 64, 64))  # type: ignore
+parser.add_argument("-_dim", type=tuple, default=(3, 64, 64))  # type: ignore
 parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
-parser.add_argument("--discount", type=float, default=0.99, help="Discount factor on future returns")
 parser.add_argument("--adam_eps", type=float, default=1.5e-4)
 parser.add_argument("--optimizer", default="Adam", help="Optimizer to use")
 parser.add_argument(
@@ -46,7 +45,7 @@ parser.add_argument("--model", default=None)
 parser.add_argument("--history_length", type=int, default=1)
 parser.add_argument("--multi_step", type=int, default=3, help="Number of steps for multi step rewards")
 parser.add_argument("--t", type=int, default=0)
-parser.add_argument("--no_ret_normalization", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--no_ret_normalization", type=lambda x: bool(strtobool(x)), default=True)
 parser.add_argument("--eps", type=float, default=1e-05)
 parser.add_argument("--clip_param", type=float, default=0.2)
 parser.add_argument("--disable_checkpoint", type=lambda x: bool(strtobool(x)), default=False)
@@ -54,7 +53,7 @@ parser.add_argument("--entropy_coef", type=float, default=0.01)
 parser.add_argument("--final_num_test_seeds", type=int, default=1000)
 parser.add_argument("--full_train_distribution", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--gae_lambda", type=float, default=0.95)
-parser.add_argument("--gamma", type=float, default=0.999)
+parser.add_argument("--gamma", type=float, default=0.999, help="Discount factor")
 parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, help="Whether to use PER")
 parser.add_argument(
     "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
