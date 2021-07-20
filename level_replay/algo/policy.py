@@ -22,6 +22,7 @@ class Rainbow(object):
         self.n = args.multi_step
         self.norm_clip = args.norm_clip
         self.PER = args.PER
+        self.gamma = args.gamma
 
         self.Q = RainbowDQN(args, self.action_space).to(self.device)
         self.Q_target = copy.deepcopy(self.Q)
@@ -31,8 +32,6 @@ class Rainbow(object):
 
         for param in self.Q_target.parameters():
             param.requires_grad = False
-
-        self.discount = args.discount
 
         self.alpha = args.alpha
         self.min_priority = args.min_priority
@@ -76,7 +75,7 @@ class Rainbow(object):
             self.Q_target.reset_noise()
             pns = self.Q_target(next_state)
             pns_a = pns.gather(1, next_action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-            target_Q = reward.expand(-1, self.atoms) + not_done * (self.discount ** self.n) * pns_a
+            target_Q = reward.expand(-1, self.atoms) + not_done * (self.gamma ** self.n) * pns_a
 
         target_Q = target_Q.clamp(min=self.V_min, max=self.V_max)  # Clamp between supported values
         # Compute L2 projection of Tz onto fixed support z
@@ -160,7 +159,6 @@ class DDQN(object):
         for param in self.Q_target.parameters():
             param.requires_grad = False
 
-        self.discount = args.discount
         self.PER = args.PER
         self.n_step = args.multi_step
 
@@ -221,7 +219,7 @@ class DDQN(object):
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done * (self.discount ** self.n_step) * self.Q_target(next_state).gather(
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
                 1, next_action
             )
 
@@ -256,7 +254,7 @@ class DDQN(object):
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
 
         with torch.no_grad():
-            target_Q = reward + not_done * (self.discount ** self.n_step) * online.get_value(next_state, 0, 0)
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * online.get_value(next_state, 0, 0)
 
         current_Q = self.Q(state).gather(1, action)
 
@@ -333,7 +331,6 @@ class AtariAgent(object):
             self.Q.parameters(), **args.optimizer_parameters
         )
 
-        self.discount = args.discount
         self.PER = args.PER
         self.n_step = args.multi_step
 
@@ -366,7 +363,7 @@ class AtariAgent(object):
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done * (self.discount ** self.n_step) * self.Q_target(next_state).gather(
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
                 1, next_action
             )
 
