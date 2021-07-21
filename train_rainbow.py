@@ -137,8 +137,9 @@ def train(args, seeds):
                     n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
                 )
                 if done[i]:
+                    reward_deque_i = list(reward_deque[i])
                     for j in range(1, args.multi_step):
-                        n_reward = multi_step_reward(reward_deque[i][j : j + args.multi_step], args.gamma)
+                        n_reward = multi_step_reward(reward_deque_i[j : j + args.multi_step], args.gamma)
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
