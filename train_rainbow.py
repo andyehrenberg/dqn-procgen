@@ -28,6 +28,9 @@ def train(args, seeds):
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = seeds
 
+    args.sge_job_id = int(os.environ.get("JOB_ID", -1))
+    args.sge_task_id = int(os.environ.get("SGE_TASK_ID", -1))
+
     torch.set_num_threads(1)
 
     utils.seed(args.seed)
