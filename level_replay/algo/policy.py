@@ -3,7 +3,7 @@ import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, RainbowDQN
+from level_replay.algo.dqn import DQN, RainbowDQN, SimpleDQN
 from torch.nn.utils import clip_grad_norm_
 
 
@@ -151,7 +151,11 @@ class DDQN(object):
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
-        self.Q = DQN(args, self.action_space).to(self.device)
+        if args.simple_dqn:
+            self.Q = SimpleDQN(args, self.action_space).to(self.device)
+        else:
+            self.Q = DQN(args, self.action_space).to(self.device)
+
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer = getattr(torch.optim, args.optimizer)(
             self.Q.parameters(), **args.optimizer_parameters
