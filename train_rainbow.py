@@ -247,6 +247,7 @@ def train(args, seeds):
             },
             args.model_path,
         )
+        wandb.save(args.model_path)
 
 
 def generate_seeds(num_seeds, base_seed=0):
