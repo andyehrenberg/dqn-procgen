@@ -248,6 +248,7 @@ def train(args, seeds):
             },
             args.model_path,
         )
+        wandb.save(args.model_path)
 
 
 def generate_seeds(num_seeds, base_seed=0):
@@ -272,6 +273,7 @@ def eval_policy(
     level_sampler=None,
     progressbar=None,
     record=False,
+    print_score=True,
 ):
     if level_sampler:
         start_level = level_sampler.seed_range()[0]
@@ -323,9 +325,10 @@ def eval_policy(
 
     avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
 
-    print("---------------------------------------")
-    print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
-    print("---------------------------------------")
+    if print_score:
+        print("---------------------------------------")
+        print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
+        print("---------------------------------------")
     return eval_episode_rewards
 
 

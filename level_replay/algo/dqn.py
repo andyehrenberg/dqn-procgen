@@ -65,12 +65,22 @@ class Conv2d_tf(nn.Conv2d):
         )
 
 
+class L2Pool(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.pool = nn.AvgPool2d(*args, **kwargs)
+        self.n = self.pool.kernel_size ** 2
+
+    def forward(self, x):
+        return torch.sqrt(self.pool(x ** 2) * self.n)
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, n_channels, stride=1):
         super(ResidualBlock, self).__init__()
 
         self.conv1 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
         self.conv2 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
         self.stride = stride
 
@@ -241,6 +251,50 @@ class DQN(nn.Module):
             advantage.view(-1, self.action_space),
         )
         q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
+        return q
+
+
+class SimpleDQN(nn.Module):
+    def __init__(self, args, action_space):
+        super(SimpleDQN, self).__init__()
+        self.action_space = action_space
+        self.conv1 = Conv2d_tf(3, 16, kernel_size=7, stride=1, padding=(1, 1))
+        self.relu = nn.ReLU(inplace=True)
+        self.pool1 = L2Pool(kernel_size=2, stride=2)
+        self.conv2a = Conv2d_tf(16, 32, kernel_size=5, stride=1, padding=(1, 1))
+        self.conv2b = Conv2d_tf(32, 32, kernel_size=5, stride=1, padding=(1, 1))
+        self.pool2 = L2Pool(kernel_size=2, stride=2)
+        self.conv3 = Conv2d_tf(32, 32, kernel_size=7, stride=1, padding=(1, 1))
+        self.pool3 = L2Pool(kernel_size=2, stride=2)
+        self.conv4 = Conv2d_tf(32, 32, kernel_size=7, stride=1, padding=(1, 1))
+        self.pool4 = L2Pool(kernel_size=2, stride=2)
+        self.fc_h1_v = nn.Linear(512, 256)
+        self.fc_h1_a = nn.Linear(512, 256)
+        self.fc_h2_v = nn.Linear(256, 512)
+        self.fc_h2_a = nn.Linear(256, 512)
+        self.fc_z_v = nn.Linear(512, 1)
+        self.fc_z_a = nn.Linear(512, action_space)
+
+    def forward(self, x):
+        x = self.pool1(self.relu(self.conv1(x)))
+        x = self.pool2(self.relu(self.conv2b(self.relu(self.conv2a(x)))))
+        x = self.pool3(self.relu(self.conv3(x)))
+        x = self.pool4(self.relu(self.conv4(x)))
+        x = x.view(-1, 512)
+        value = self.relu(self.fc_h1_v(x))
+        value = self.relu(self.fc_h2_v(value))
+        value = self.fc_z_v(value)
+        advantage = self.relu(self.fc_h1_a(x))
+        advantage = self.relu(self.fc_h2_a(advantage))
+        advantage = self.fc_z_a(advantage)
+        value, advantage = (
+            value.view(
+                -1,
+                1,
+            ),
+            advantage.view(-1, self.action_space),
+        )
+        q = value + advantage - advantage.mean(1, keepdim=True)
         return q
 
 
