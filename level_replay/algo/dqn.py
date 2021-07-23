@@ -280,7 +280,7 @@ class SimpleDQN(nn.Module):
         x = self.pool2(self.relu(self.conv2b(self.relu(self.conv2a(x)))))
         x = self.pool3(self.relu(self.conv3(x)))
         x = self.pool4(self.relu(self.conv4(x)))
-        x = x.view(-1, 512)
+        x = x.reshape(-1, 512)
         value = self.relu(self.fc_h1_v(x))
         value = self.relu(self.fc_h2_v(value))
         value = self.fc_z_v(value)
