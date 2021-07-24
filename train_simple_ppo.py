@@ -18,7 +18,7 @@ from level_replay import algo, utils
 from level_replay.arguments import parser
 from level_replay.envs import make_lr_venv
 from level_replay.model import model_for_env_name
-from level_replay.storage import RolloutStorage
+from level_replay.storage import SimpleRolloutStorage
 from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -95,12 +95,11 @@ def train(args, seeds):
     actor_critic = model_for_env_name(args, envs)
     actor_critic.to(device)
 
-    rollouts = RolloutStorage(
+    rollouts = SimpleRolloutStorage(
         args.num_steps,
         args.num_processes,
         envs.observation_space.shape,
         envs.action_space,
-        # actor_critic.recurrent_hidden_state_size,
     )
 
     def checkpoint():
