@@ -19,13 +19,21 @@ from level_replay.utils import init
 from level_replay.envs import PROCGEN_ENVS
 
 
-init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
+def init_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
 
-init_relu_ = lambda m: init(
-    m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), nn.init.calculate_gain("relu")
-)
 
-init_tanh_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2))
+def init_relu_(m):
+    return init(
+        m,
+        nn.init.orthogonal_,
+        lambda x: nn.init.constant_(x, 0),
+        nn.init.calculate_gain("relu"),
+    )
+
+
+def init_tanh_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2))
 
 
 def apply_init_(modules):
@@ -45,12 +53,15 @@ def apply_init_(modules):
 
 def model_for_env_name(args, env):
     if args.env_name in PROCGEN_ENVS:
-        model = Policy(
-            env.observation_space.shape,
-            env.action_space.n,
-            arch=args.arch,
-            base_kwargs={"recurrent": False, "hidden_size": args.hidden_size},
-        )
+        if args.simple_arch:
+            model = SimplePolicy(env.observation_space.shape, env.action_space.n)
+        else:
+            model = Policy(
+                env.observation_space.shape,
+                env.action_space.n,
+                arch=args.arch,
+                base_kwargs={"recurrent": False, "hidden_size": args.hidden_size},
+            )
     elif args.env_name.startswith("MiniGrid"):
         model = MinigridPolicy(env.observation_space.shape, env.action_space.n, arch=args.arch)
     else:
@@ -66,6 +77,16 @@ class Flatten(nn.Module):
 
     def forward(self, x):
         return x.reshape(x.size(0), -1)
+
+
+class L2Pool(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.pool = nn.AvgPool2d(*args, **kwargs)
+        self.n = self.pool.kernel_size ** 2
+
+    def forward(self, x):
+        return torch.sqrt(self.pool(x ** 2) * self.n)
 
 
 class Conv2d_tf(nn.Conv2d):
@@ -159,7 +180,6 @@ class Policy(nn.Module):
 
         # action_log_probs = dist.log_probs(action)
         action_log_dist = dist.logits
-        dist_entropy = dist.entropy().mean()
 
         return value, action, action_log_dist, rnn_hxs
 
@@ -175,6 +195,85 @@ class Policy(nn.Module):
         dist_entropy = dist.entropy().mean()
 
         return value, action_log_probs, dist_entropy, rnn_hxs
+
+
+class SimplePolicy(nn.Module):
+    """
+    Actor-Critic module
+    """
+
+    def __init__(self, obs_shape, num_actions, arch="small", base_kwargs=None):
+        super(SimplePolicy, self).__init__()
+
+        self.conv1 = Conv2d_tf(3, 16, kernel_size=7, stride=1, padding="SAME")
+        self.pool1 = L2Pool(kernel_size=2, stride=2)
+        self.conv2a = Conv2d_tf(16, 32, kernel_size=5, stride=1, padding="SAME")
+        self.conv2b = Conv2d_tf(32, 32, kernel_size=5, stride=1, padding="SAME")
+        self.pool2 = L2Pool(kernel_size=2, stride=2)
+        self.conv3 = Conv2d_tf(32, 32, kernel_size=7, stride=1, padding="SAME")
+        self.pool3 = L2Pool(kernel_size=2, stride=2)
+        self.conv4 = Conv2d_tf(32, 32, kernel_size=7, stride=1, padding="SAME")
+        self.pool4 = L2Pool(kernel_size=2, stride=2)
+        self.flat = nn.Flatten()
+        self.fc1 = nn.Linear(512, 256)
+        self.fc2 = nn.Linear(256, 512)
+        self.critic = nn.Linear(512, 1)
+        self.dist = Categorical(512, num_actions)
+
+    def forward(self, inputs):
+        x = self.pool1(F.relu(self.conv1(inputs)))
+        x = self.pool2(F.relu(self.conv2b(F.relu(self.conv2a(x)))))
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = self.pool4(F.relu(self.conv4(x)))
+        x = self.flat(x)
+        x = F.relu(self.fc1(x))
+        actor_features = F.relu(self.fc2(x))
+        value = self.critic(actor_features)
+
+        return value
+
+    def act(self, inputs, deterministic=False):
+        x = self.pool1(F.relu(self.conv1(inputs)))
+        x = self.pool2(F.relu(self.conv2b(F.relu(self.conv2a(x)))))
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = self.pool4(F.relu(self.conv4(x)))
+        x = self.flat(x)
+        x = F.relu(self.fc1(x))
+        actor_features = F.relu(self.fc2(x))
+
+        value = self.critic(actor_features)
+        dist = self.dist(actor_features)
+
+        if deterministic:
+            action = dist.mode()
+        else:
+            action = dist.sample()
+
+        action_log_dist = dist.logits
+
+        return value, action, action_log_dist
+
+    def get_value(self, inputs):
+        value = self.forward(inputs)
+        return value
+
+    def evaluate_actions(self, inputs, action):
+        x = self.pool1(F.relu(self.conv1(inputs)))
+        x = self.pool2(F.relu(self.conv2b(F.relu(self.conv2a(x)))))
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = self.pool4(F.relu(self.conv4(x)))
+        x = self.flat(x)
+        x = F.relu(self.fc1(x))
+
+        actor_features = F.relu(self.fc2(x))
+        value = self.critic(actor_features)
+
+        dist = self.dist(actor_features)
+
+        action_log_probs = dist.log_probs(action)
+        dist_entropy = dist.entropy().mean()
+
+        return value, action_log_probs, dist_entropy
 
 
 class NNBase(nn.Module):
@@ -337,7 +436,7 @@ class ResNetBase(NNBase):
     Residual Network
     """
 
-    def __init__(self, num_inputs, recurrent=False, hidden_size=256, channels=[16, 32, 32]):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=256, channels=(16, 32, 32)):
         super(ResNetBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         self.layer1 = self._make_layer(num_inputs, channels[0])
@@ -487,7 +586,6 @@ class MinigridPolicy(nn.Module):
 
         # action_log_probs = dist.log_probs(action)
         action_log_dist = dist.logits
-        dist_entropy = dist.entropy().mean()
 
         return value, action, action_log_dist, rnn_hxs
 
