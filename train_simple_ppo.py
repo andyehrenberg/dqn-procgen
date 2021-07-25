@@ -14,7 +14,8 @@ import numpy as np
 import torch
 import wandb
 
-from level_replay import algo, utils
+from level_replay.algo.ppo import SimplePPO
+from level_replay import utils
 from level_replay.arguments import parser
 from level_replay.envs import make_lr_venv
 from level_replay.model import model_for_env_name
@@ -115,7 +116,7 @@ def train(args, seeds):
             checkpointpath,
         )
 
-    agent = algo.SimplePPO(
+    agent = SimplePPO(
         actor_critic,
         args.clip_param,
         args.ppo_epoch,
