@@ -283,10 +283,10 @@ class SimpleDQN(nn.Module):
         x = self.flat(x)
         value = F.relu(self.fc_h1_v(x))
         value = F.relu(self.fc_h2_v(value))
-        value = F.fc_z_v(value)
+        value = self.fc_z_v(value)
         advantage = F.relu(self.fc_h1_a(x))
         advantage = F.relu(self.fc_h2_a(advantage))
-        advantage = F.fc_z_a(advantage)
+        advantage = self.fc_z_a(advantage)
         value, advantage = (
             value.view(
                 -1,
