@@ -157,7 +157,6 @@ class SimplePPO:
             for sample in data_generator:
                 (
                     obs_batch,
-                    recurrent_hidden_states_batch,
                     actions_batch,
                     value_preds_batch,
                     return_batch,
