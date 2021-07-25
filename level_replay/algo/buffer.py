@@ -35,12 +35,19 @@ class AbstractBuffer:
 class Buffer(AbstractBuffer):
     def __init__(self, args):
         super(Buffer, self).__init__(args)
-        self.prioritized = args.PER
-        num_updates = (
-            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-        )
+        self.ere = args.ERE
+        self.prioritized = args.PER and not self.ere
 
-        if self.prioritized:
+        if self.ere:
+            self.sizes = [int(self.max_size * 0.995 ** (k * 1000 / 64)) for k in range(64)]
+            self.size_ptr = -1
+
+        elif self.prioritized:
+            num_updates = (
+                args.num_updates
+                * (args.T_max // args.num_processes - args.start_timesteps)
+                // args.train_freq
+            )
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
             self.beta = args.beta
@@ -98,17 +105,17 @@ class Buffer(AbstractBuffer):
         self.size = min(self.size + n_transitions, self.max_size)
 
     def sample(self):
-        ind = (
-            self.tree.sample(self.batch_size)
-            if self.prioritized
-            else np.random.randint(0, self.size, size=self.batch_size)
-        )
-
         if self.prioritized:
+            ind = self.tree.sample(self.batch_size)
             weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
             weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
             self.beta = min(self.beta + self.beta_stepper, 1)
+        elif self.ere:
+            self.size_ptr = (self.size_ptr + 1) % 64
+            ind = np.random.randint(0, min(self.sizes[self.size_ptr], self.size), size=self.batch_size)
+            weights = torch.FloatTensor([1]).to(self.device)
         else:
+            ind = np.random.randint(0, self.size, size=self.batch_size)
             weights = torch.FloatTensor([1]).to(self.device)
 
         return (

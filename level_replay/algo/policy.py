@@ -21,7 +21,7 @@ class Rainbow(object):
         self.batch_size = args.batch_size
         self.n = args.multi_step
         self.norm_clip = args.norm_clip
-        self.PER = args.PER
+        self.PER = args.PER and not args.ERE
         self.gamma = args.gamma
 
         self.Q = RainbowDQN(args, self.action_space).to(self.device)
@@ -163,7 +163,7 @@ class DDQN(object):
         for param in self.Q_target.parameters():
             param.requires_grad = False
 
-        self.PER = args.PER
+        self.PER = args.PER and not args.ERE
         self.n_step = args.multi_step
 
         self.alpha = args.alpha
@@ -199,24 +199,12 @@ class DDQN(object):
             value = q.max(1)[0]
             return value
 
-    def train(self, replay_buffer, ere=False, c_k=None):
-        if ere:
-            (
-                state,
-                action,
-                next_state,
-                reward,
-                not_done,
-                seeds,
-                ind,
-                weights,
-            ) = replay_buffer.sample_priority_only_batch(c_k)
-        else:
-            state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+    def train(self, replay_buffer):
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         for idx, seed in enumerate(seeds):
             s = seed.cpu().numpy()[0]
-            if self.PER and not ere:
+            if self.PER:
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
             else:
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
@@ -241,7 +229,7 @@ class DDQN(object):
         self.iterations += 1
         self.maybe_update_target()
 
-        if self.PER and not ere:
+        if self.PER:
             priority = ((current_Q - target_Q).abs() + 1e-10).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
