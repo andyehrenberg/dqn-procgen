@@ -171,12 +171,14 @@ def train(args, seeds):
                         },
                         step=count * args.num_processes,
                     )
-                    plot_level_returns(level_seeds, episode_reward, i, step=count * args.num_processes)
+                    if args.log_per_seed_stats:
+                        plot_level_returns(level_seeds, episode_reward, i, step=count * args.num_processes)
                 if level_sampler:
                     level_seed = info["level_seed"]
                     if level_seeds[i][0] != level_seed:
                         level_seeds[i][0] = level_seed
-                        new_episode(value, level_seed, i, step=count * args.num_processes)
+                        if args.log_per_seed_stats:
+                            new_episode(value, level_seed, i, step=count * args.num_processes)
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])

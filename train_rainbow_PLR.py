@@ -133,7 +133,8 @@ def train(args, seeds):
                 level_seed = info["level_seed"]
                 if level_seeds[i][0] != level_seed:
                     level_seeds[i][0] = level_seed
-                    new_episode(value, level_seed, i, step=t * args.num_processes)
+                    if args.log_per_seed_stats:
+                        new_episode(value, level_seed, i, step=t * args.num_processes)
             state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
@@ -168,7 +169,8 @@ def train(args, seeds):
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
-                plot_level_returns(level_seeds, episode_reward, i, step=t * args.num_processes)
+                if args.log_per_seed_stats:
+                    plot_level_returns(level_seeds, episode_reward, i, step=t * args.num_processes)
 
         rollouts.insert(next_state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
 
