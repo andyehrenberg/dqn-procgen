@@ -202,6 +202,7 @@ def train(args, seeds):
             level_sampler.update_with_rollouts(rollouts)
 
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
+        wandb.log({"Value Loss": value_loss}, step=count * args.num_processes)
         rollouts.after_update()
         if level_sampler:
             level_sampler.after_update()
