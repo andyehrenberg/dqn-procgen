@@ -53,7 +53,7 @@ def apply_init_(modules):
 
 def model_for_env_name(args, env):
     if args.env_name in PROCGEN_ENVS:
-        if args.simple_arch:
+        if args.arch == "simple":
             model = SimplePolicy(env.observation_space.shape, env.action_space.n)
         else:
             model = Policy(
