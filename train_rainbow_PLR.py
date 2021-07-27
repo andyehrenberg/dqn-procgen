@@ -95,9 +95,6 @@ def train(args, seeds):
 
     num_steps = int(args.T_max // args.num_processes)
 
-    recent_returns = {seed: 0 for seed in seeds}
-    s0_value_estimates = {seed: 0 for seed in seeds}
-
     loss, grad_magnitude = None, None
 
     epsilon_start = 1.0
@@ -136,7 +133,7 @@ def train(args, seeds):
                 level_seed = info["level_seed"]
                 if level_seeds[i][0] != level_seed:
                     level_seeds[i][0] = level_seed
-                    new_episode(s0_value_estimates, value, level_seed, i, step=t * args.num_processes)
+                    new_episode(value, level_seed, i, step=t * args.num_processes)
             state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
@@ -171,9 +168,7 @@ def train(args, seeds):
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
-                plot_level_returns(
-                    recent_returns, level_seeds, episode_reward, i, step=t * args.num_processes
-                )
+                plot_level_returns(level_seeds, episode_reward, i, step=t * args.num_processes)
 
         rollouts.insert(next_state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
 
@@ -365,17 +360,13 @@ def multi_step_reward(rewards, gamma):
     return ret
 
 
-def new_episode(s0_value_estimates, value, level_seed, i, step):
-    s0_value_estimates[level_seed] = value[i].item()
-    wandb.log(
-        {f"Start State Value Estimate for Level {level_seed}": s0_value_estimates[level_seed]}, step=step
-    )
+def new_episode(value, level_seed, i, step):
+    wandb.log({f"Start State Value Estimate for Level {level_seed}": value[i].item()}, step=step)
 
 
-def plot_level_returns(recent_returns, level_seeds, episode_reward, i, step):
+def plot_level_returns(level_seeds, episode_reward, i, step):
     seed = level_seeds[i][0].item()
-    recent_returns[seed] = episode_reward
-    wandb.log({f"Empirical Return for Level {seed}": recent_returns[seed]}, step=step)
+    wandb.log({f"Empirical Return for Level {seed}": episode_reward}, step=step)
 
 
 if __name__ == "__main__":
