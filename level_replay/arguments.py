@@ -39,7 +39,7 @@ parser.add_argument("--log_dir", default="~/logs/ppo/", help="directory to save 
 parser.add_argument("--no_cuda", action="store_true", default=False, help="disables CUDA training")
 parser.add_argument("--hidden_size", type=int, default=256, help="state embedding dimension")
 parser.add_argument(
-    "--arch", type=str, default="large", choices=["small", "large"], help="agent architecture"
+    "--arch", type=str, default="large", choices=["small", "large", "simple"], help="agent architecture"
 )
 
 # Procgen arguments.
