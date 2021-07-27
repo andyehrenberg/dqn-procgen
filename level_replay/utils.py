@@ -263,8 +263,104 @@ PPO_SCORES: dict = {
     },
 }
 
+MIN = True
+MAX = False
+
+# For easy mode
+EASY_MIN_MAX_SCORES: dict = {
+    MIN: {
+        "bigfish": 1,
+        "starpilot": 2.5,
+        "fruitbot": -1.5,
+        "bossfight": 0.5,
+        "ninja": 3.5,
+        "plunder": 4.5,
+        "caveflyer": 3.5,
+        "coinrun": 5,
+        "jumper": 3,
+        "chaser": 0.5,
+        "climber": 3,
+        "dodgeball": 1.5,
+        "heist": 3.5,
+        "leaper": 3,
+        "maze": 5,
+        "miner": 1.5,
+    },
+    MAX: {
+        "bigfish": 40,
+        "starpilot": 64,
+        "fruitbot": 32.4,
+        "bossfight": 13,
+        "ninja": 10,
+        "plunder": 30,
+        "caveflyer": 12,
+        "coinrun": 10,
+        "jumper": 10,
+        "chaser": 13,
+        "climber": 12.6,
+        "dodgeball": 19,
+        "heist": 10,
+        "leaper": 10,
+        "maze": 10,
+        "miner": 13,
+    },
+}
+
+# For hard mode
+HARD_MIN_MAX_SCORES: dict = {
+    MIN: {
+        "bigfish": 0,
+        "starpilot": 1.5,
+        "fruitbot": -0.5,
+        "bossfight": 0.5,
+        "ninja": 2,
+        "plunder": 3,
+        "caveflyer": 2,
+        "coinrun": 5,
+        "jumper": 1,
+        "chaser": 0.5,
+        "climber": 1,
+        "dodgeball": 1.5,
+        "heist": 2,
+        "leaper": 1.5,
+        "maze": 4,
+        "miner": 1.5,
+    },
+    MAX: {
+        "bigfish": 40,
+        "starpilot": 35,
+        "fruitbot": 27.2,
+        "bossfight": 13,
+        "ninja": 10,
+        "plunder": 30,
+        "caveflyer": 13.4,
+        "coinrun": 10,
+        "jumper": 10,
+        "chaser": 14.2,
+        "climber": 12.6,
+        "dodgeball": 19,
+        "heist": 10,
+        "leaper": 10,
+        "maze": 10,
+        "miner": 20,
+    },
+}
+
 
 def ppo_normalise_reward(reward: float, env_name: str, training: bool = True) -> float:
     ppo_score = PPO_SCORES[training][env_name]
     ppo_percentage = reward / ppo_score
     return ppo_percentage
+
+
+def min_max_normalise_reward(reward: float, env_name: str, mode: str = "easy") -> float:
+    if mode == "easy":
+        score_dict = EASY_MIN_MAX_SCORES
+    elif mode == "hard":
+        score_dict = HARD_MIN_MAX_SCORES
+    else:
+        raise ValueError("Invalid argument for `mode`: %s, should be 'easy' or 'hard'", mode)
+    min_score = score_dict[MIN][env_name]
+    max_score = score_dict[MAX][env_name]
+    normalised_score = (reward - min_score) / (max_score - min_score)
+    return normalised_score
