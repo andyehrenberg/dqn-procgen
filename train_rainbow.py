@@ -264,7 +264,7 @@ def eval_policy(
     args,
     policy,
     num_episodes,
-    num_processes=8,
+    num_processes=1,
     deterministic=False,
     start_level=0,
     num_levels=0,
