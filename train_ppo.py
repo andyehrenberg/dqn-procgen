@@ -19,7 +19,7 @@ from level_replay.arguments import parser
 from level_replay.envs import make_lr_venv
 from level_replay.model import model_for_env_name
 from level_replay.storage import RolloutStorage
-from level_replay.utils import ppo_normalise_reward
+from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -162,12 +162,14 @@ def train(args, seeds):
                 if "episode" in info.keys():
                     episode_reward = info["episode"]["r"]
                     episode_rewards.append(episode_reward)
+                    ppo_normalised_reward = ppo_normalise_reward(episode_reward, args.env_name)
+                    min_max_normalised_reward = min_max_normalise_reward(episode_reward, args.env_name)
                     wandb.log(
                         {
                             "Train Episode Returns": episode_reward,
-                            "Train Episode Returns (normalised)": ppo_normalise_reward(
-                                episode_reward, args.env_name
-                            ),
+                            "Train Episode Returns (normalised)": ppo_normalised_reward,
+                            "Train Episode Returns (ppo normalised)": ppo_normalised_reward,
+                            "Train Episode Returns (min-max normalised)": min_max_normalised_reward,
                         },
                         step=count * args.num_processes,
                     )
@@ -231,17 +233,21 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
-
+            test_ppo_normalised_reward = ppo_normalise_reward(mean_eval_rewards, args.env_name)
+            train_ppo_normalised_reward = ppo_normalise_reward(mean_train_rewards, args.env_name)
+            test_min_max_normalised_reward = min_max_normalise_reward(mean_eval_rewards, args.env_name)
+            train_min_max_normalised_reward = min_max_normalise_reward(mean_train_rewards, args.env_name)
             wandb.log(
                 {
                     "Test Evaluation Returns": mean_eval_rewards,
                     "Train Evaluation Returns": mean_train_rewards,
-                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
-                        mean_eval_rewards, args.env_name
-                    ),
-                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
-                        mean_train_rewards, args.env_name
-                    ),
+                    "Generalization Gap:": mean_train_rewards - mean_eval_rewards,
+                    "Test Evaluation Returns (normalised)": test_ppo_normalised_reward,
+                    "Train Evaluation Returns (normalised)": train_ppo_normalised_reward,
+                    "Test Evaluation Returns (ppo normalised)": test_ppo_normalised_reward,
+                    "Train Evaluation Returns (ppo normalised)": train_ppo_normalised_reward,
+                    "Test Evaluation Returns (min-max normalised)": test_min_max_normalised_reward,
+                    "Train Evaluation Returns (min-max normalised)": train_min_max_normalised_reward,
                 },
                 step=count * args.num_processes,
             )
