@@ -11,7 +11,7 @@ from level_replay import utils
 from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DDQN, Rainbow
 from level_replay.dqn_args import parser
-from level_replay.envs import make_lr_venv
+from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -49,7 +49,7 @@ def train(args, seeds):
         num_actors=args.num_processes,
         strategy=args.level_replay_strategy,
     )
-    envs, level_sampler = make_lr_venv(
+    envs, level_sampler = make_dqn_lr_venv(
         num_envs=args.num_processes,
         env_name=args.env_name,
         seeds=seeds,
@@ -84,9 +84,6 @@ def train(args, seeds):
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
 
     num_steps = int(args.T_max // args.num_processes)
-
-    recent_returns = {seed: 0 for seed in seeds}
-    s0_value_estimates = {seed: 0 for seed in seeds}
 
     loss, grad_magnitude = None, None
 
@@ -125,7 +122,7 @@ def train(args, seeds):
                 level_seed = info["level_seed"]
                 if level_seeds[i][0] != level_seed:
                     level_seeds[i][0] = level_seed
-                    new_episode(s0_value_estimates, value, level_seed, i, step=t * args.num_processes)
+                    new_episode(value, level_seed, i, step=t * args.num_processes)
             state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
@@ -159,9 +156,7 @@ def train(args, seeds):
                 state_deque[i].clear()
                 reward_deque[i].clear()
                 action_deque[i].clear()
-                plot_level_returns(
-                    recent_returns, level_seeds, episode_reward, i, step=t * args.num_processes
-                )
+                plot_level_returns(level_seeds, episode_reward, i, step=t * args.num_processes)
 
         state = next_state
 
@@ -280,7 +275,7 @@ def eval_policy(
         start_level = level_sampler.seed_range()[0]
         num_levels = 1
 
-    eval_envs, level_sampler = make_lr_venv(
+    eval_envs, level_sampler = make_dqn_lr_venv(
         num_envs=num_processes,
         env_name=args.env_name,
         seeds=seeds,
@@ -340,17 +335,13 @@ def multi_step_reward(rewards, gamma):
     return ret
 
 
-def new_episode(s0_value_estimates, value, level_seed, i, step):
-    s0_value_estimates[level_seed] = value[i].item()
-    wandb.log(
-        {f"Start State Value Estimate for Level {level_seed}": s0_value_estimates[level_seed]}, step=step
-    )
+def new_episode(value, level_seed, i, step):
+    wandb.log({f"Start State Value Estimate for Level {level_seed}": value[i].item()}, step=step)
 
 
-def plot_level_returns(recent_returns, level_seeds, episode_reward, i, step):
+def plot_level_returns(level_seeds, episode_reward, i, step):
     seed = level_seeds[i][0].item()
-    recent_returns[seed] = episode_reward
-    wandb.log({f"Empirical Return for Level {seed}": recent_returns[seed]}, step=step)
+    wandb.log({f"Empirical Return for Level {seed}": episode_reward}, step=step)
 
 
 if __name__ == "__main__":

@@ -153,7 +153,7 @@ def train(args, seeds):
                 )
                 action_log_prob = action_log_dist.gather(-1, action)
 
-            # Obser reward and next obs
+            # Observe reward and next obs
             obs, reward, done, infos = envs.step(action)
             reward = torch.from_numpy(reward)
 
@@ -171,8 +171,12 @@ def train(args, seeds):
                         },
                         step=count * args.num_processes,
                     )
+                    plot_level_returns(level_seeds, episode_reward, i, step=count * args.num_processes)
                 if level_sampler:
-                    level_seeds[i][0] = info["level_seed"]
+                    level_seed = info["level_seed"]
+                    if level_seeds[i][0] != level_seed:
+                        level_seeds[i][0] = level_seed
+                        new_episode(value, level_seed, i, step=count * args.num_processes)
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
@@ -280,6 +284,15 @@ def load_seeds(seed_path):
     seed_path = os.path.expandvars(os.path.expanduser(seed_path))
     seeds = open(seed_path).readlines()
     return [int(s) for s in seeds]
+
+
+def new_episode(value, level_seed, i, step):
+    wandb.log({f"Start State Value Estimate for Level {level_seed}": value[i].item()}, step=step)
+
+
+def plot_level_returns(level_seeds, episode_reward, i, step):
+    seed = level_seeds[i][0].item()
+    wandb.log({f"Empirical Return for Level {seed}": episode_reward}, step=step)
 
 
 if __name__ == "__main__":
