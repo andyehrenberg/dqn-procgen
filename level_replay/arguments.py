@@ -143,3 +143,4 @@ parser.add_argument(
     default="",
     help="Wandb group for this run",
 )
+parser.add_argument("--log_per_seed_stats", type=lambda x: bool(strtobool(x)), default=True)
