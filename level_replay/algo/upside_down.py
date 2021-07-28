@@ -56,7 +56,7 @@ class EpisodeMemory:
         self.reward = []
 
     def add(self, state, action, reward):
-        state_ = (state * 255).numpy().astype(np.uint8)
+        state_ = (state * 255).cpu().numpy().astype(np.uint8)
         action_ = action.cpu().numpy().astype(np.uint8)
         self.state.append(state_)
         self.action.append(action_)
