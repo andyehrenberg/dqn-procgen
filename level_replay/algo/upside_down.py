@@ -196,8 +196,8 @@ def generate_episodes(policy, mem, commands, env_steps, args):
         env_steps += args.num_processes
 
         for i, info in enumerate(infos):
-            commands_[i][0] -= torch.FloatTensor(reward[i]).to(args.device)
-            commands_[i][1] -= torch.FloatTensor([1]).to(args.device)
+            commands_[i][0] -= reward[i][0]
+            commands_[i][1] -= 1
             if level_sampler:
                 level_seed = info["level_seed"]
                 if level_seeds[i][0] != level_seed:
@@ -331,8 +331,8 @@ def evaluate(
         next_state, reward, done, infos = eval_envs.step(action)
 
         for i, info in enumerate(infos):
-            commands_[i][0] -= torch.FloatTensor(reward[i]).to(args.device)
-            commands_[i][1] -= torch.FloatTensor([1]).to(args.device)
+            commands_[i][0] -= reward[i][0]
+            commands_[i][1] -= 1
             if level_sampler:
                 level_seed = info["level_seed"]
                 if level_seeds[i][0] != level_seed:
