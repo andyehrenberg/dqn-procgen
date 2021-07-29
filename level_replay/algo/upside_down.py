@@ -214,6 +214,8 @@ def generate_episodes(policy, mem, commands, env_steps, args):
 
     envs.close()
 
+    mem.sort()
+
 
 def warm_up(args):
     num_levels = 1

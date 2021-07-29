@@ -31,6 +31,7 @@ def train(args, seeds):
         group=args.wandb_group,
     )
 
+    print("Warming up memory, creating policy")
     mem, env_steps, policy = upside_down.warm_up(args)
 
     it = 0
@@ -47,7 +48,6 @@ def train(args, seeds):
             env_steps,
             args,
         )
-        mem.sort()
         if (it % args.eval_freq) == 0:
             commands = upside_down.sample_commands(mem, args.last_few)
             mean_train_rewards = np.mean(
@@ -70,6 +70,9 @@ def train(args, seeds):
                 },
                 step=env_steps,
             )
+            print("---------------------------------------")
+            print(f"Evaluation on train episodes at iteration {it}: {mean_train_rewards}")
+            print("---------------------------------------")
 
     commands = upside_down.sample_commands(mem, args.last_few)
     mean_train_rewards = np.mean(
