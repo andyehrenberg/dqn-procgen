@@ -41,7 +41,7 @@ def train(args, seeds):
         loss = upside_down.update(policy, mem, args.n_updates_per_iter)
         wandb.log({"Loss": loss}, step=env_steps)
         commands = upside_down.sample_commands(mem, args.last_few)
-        upside_down.generate_episodes(
+        env_steps = upside_down.generate_episodes(
             policy,
             mem,
             commands,
