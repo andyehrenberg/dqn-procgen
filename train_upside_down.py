@@ -34,10 +34,9 @@ def train(args, seeds):
     print("Warming up memory, creating policy")
     mem, env_steps, policy = upside_down.warm_up(args)
 
-    it = 0
+    last_eval = 0
 
     while env_steps < args.T_max:
-        it += 1
         loss = upside_down.update(policy, mem, args.n_updates_per_iter)
         wandb.log({"Loss": loss}, step=env_steps)
         commands = upside_down.sample_commands(mem, args.last_few)
@@ -48,7 +47,8 @@ def train(args, seeds):
             env_steps,
             args,
         )
-        if (it % args.eval_freq) == 0:
+        if env_steps - args.eval_freq > last_eval:
+            last_eval = env_steps
             commands = upside_down.sample_commands(mem, args.last_few)
             mean_train_rewards = np.mean(
                 upside_down.evaluate(
@@ -70,9 +70,9 @@ def train(args, seeds):
                 },
                 step=env_steps,
             )
-            print("---------------------------------------")
-            print(f"Evaluation on train episodes at iteration {it}: {mean_train_rewards}")
-            print("---------------------------------------")
+            print("---------------------------------------------------------------------------------")
+            print(f"Evaluation on train episodes after {env_steps} environment steps: {mean_train_rewards}")
+            print("---------------------------------------------------------------------------------")
 
     commands = upside_down.sample_commands(mem, args.last_few)
     mean_train_rewards = np.mean(
