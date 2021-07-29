@@ -213,8 +213,9 @@ def generate_episodes(policy, mem, commands, env_steps, args):
         state = next_state
 
     envs.close()
-
     mem.sort()
+
+    return env_steps
 
 
 def warm_up(args):
