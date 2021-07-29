@@ -196,10 +196,16 @@ class RainbowDQN(nn.Module):
 
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
-        self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-        self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-        self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
-        self.fc_z_a = NoisyLinear(args.hidden_size, action_space * self.atoms, std_init=args.noisy_std)
+        if args.noisy_layers:
+            self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+            self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+            self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
+            self.fc_z_a = NoisyLinear(args.hidden_size, action_space * self.atoms, std_init=args.noisy_std)
+        else:
+            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
+            self.fc_z_a = nn.Linear(args.hidden_size, action_space * self.atoms)
 
     def forward(self, x, log=False):
         x = self.features(x)
