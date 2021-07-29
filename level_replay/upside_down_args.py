@@ -4,7 +4,7 @@ from distutils.util import strtobool
 parser = argparse.ArgumentParser(description="DQN")
 
 # Training parameters
-parser.add_argument("--eval_freq", type=int, default=50, help="Evaluation frequency")
+parser.add_argument("--eval_freq", type=int, default=10000, help="Env steps between evaluation")
 parser.add_argument("--T_max", type=int, default=25e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
 
