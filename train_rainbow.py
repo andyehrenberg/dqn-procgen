@@ -94,6 +94,10 @@ def train(args, seeds):
         )
 
     for t in range(num_steps):
+        if t % args.train_freq == 0:
+            if args.rainbow and args.noisy_layers:
+                agent.reset_noise()
+
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -105,7 +109,9 @@ def train(args, seeds):
             cur_epsilon = epsilon(t)
             action, value = agent.select_action(state)
             for i in range(args.num_processes):
-                if np.random.uniform() < cur_epsilon:
+                if (not args.rainbow or (args.rainbow and not args.noisy_layers)) and (
+                    np.random.uniform() < cur_epsilon
+                ):
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
             wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
@@ -161,12 +167,11 @@ def train(args, seeds):
         state = next_state
 
         # Train agent after collecting sufficient data
-        if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            for _ in range(args.num_updates):
-                loss, grad_magnitude = agent.train(replay_buffer)
-                wandb.log(
-                    {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
-                )
+        if t % args.train_freq == 0 and t >= args.start_timesteps:
+            if args.rainbow and args.noisy_layers:
+                agent.reset_noise()
+            loss, grad_magnitude = agent.train(replay_buffer)
+            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
         if t == num_steps - 1:
             count_data = [
@@ -183,7 +188,7 @@ def train(args, seeds):
                 }
             )
 
-        if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
+        if t >= args.start_timesteps and t % args.eval_freq == 0:
             mean_test_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
             mean_train_rewards = np.mean(
                 eval_policy(
