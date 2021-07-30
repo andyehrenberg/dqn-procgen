@@ -55,7 +55,7 @@ parser.add_argument("--entropy_coef", type=float, default=0.01)
 parser.add_argument("--final_num_test_seeds", type=int, default=1000)
 parser.add_argument("--full_train_distribution", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--gae_lambda", type=float, default=0.95)
-parser.add_argument("--gamma", type=float, default=0.999, help="Discount factor")
+parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
 parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, help="Whether to use PER")
 parser.add_argument(
     "--rank_based_PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use rank based PER"
