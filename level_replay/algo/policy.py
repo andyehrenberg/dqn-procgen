@@ -105,7 +105,7 @@ class Rainbow(object):
         self.maybe_update_target()
 
         if self.PER:
-            priority = loss.clamp(min=self.min_priority).cpu().data.numpy().flatten()
+            priority = elementwise_loss.clamp(min=self.min_priority).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude
