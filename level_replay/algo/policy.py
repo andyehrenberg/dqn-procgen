@@ -17,7 +17,7 @@ class Rainbow(object):
         self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(
             device=args.device
         )  # Support (range) of z
-        self.delta_z = (args.V_max - args.V_min) / (self.atoms - 1)
+        self.delta_z = float(args.V_max - args.V_min) / (self.atoms - 1)
         self.batch_size = args.batch_size
         self.n = args.multi_step
         self.norm_clip = args.norm_clip
@@ -52,62 +52,55 @@ class Rainbow(object):
     def select_action(self, state, eval=False):
         with torch.no_grad():
             q = self.Q(state)
-            q_s = (q * self.support).sum(2)
-            action = q_s.argmax(1).reshape(-1, 1)
-            return action, q_s.max(1)[0]
+            action = q.argmax(1).reshape(-1, 1)
+            return action, q.max(1)[0]
 
     def get_value(self, state):
         with torch.no_grad():
             q = self.Q(state)
-            q_s = (q * self.support).sum(2)
-            return q_s.max(1)[0]
+            return q.max(1)[0]
 
     def train(self, replay_buffer):
         self.reset_noise()
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
-        log_p1s = self.Q(state, log=True)
-        log_p1s_a = log_p1s.gather(1, action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-
         with torch.no_grad():
-            next_Q = self.Q(next_state)
-            next_action = (next_Q * self.support).sum(2).argmax(1).reshape(-1, 1)
-            self.Q_target.reset_noise()
-            pns = self.Q_target(next_state)
-            pns_a = pns.gather(1, next_action.unsqueeze(1).expand(self.batch_size, 1, self.atoms)).squeeze(1)
-            target_Q = reward.expand(-1, self.atoms) + not_done * (self.gamma ** self.n) * pns_a
+            next_action = self.Q(next_state).argmax(1)
+            next_dist = self.Q_target.dist(next_state)[range(self.batch_size), next_action]
+            t_z = reward + not_done * self.gamma * self.support
+            t_z = t_z.clamp(min=self.V_min, max=self.V_max)
+            b = (t_z - self.V_min) / self.delta_z
+            lower = b.floor().long()
+            upper = b.ceil().long()
 
-        target_Q = target_Q.clamp(min=self.V_min, max=self.V_max)  # Clamp between supported values
-        # Compute L2 projection of Tz onto fixed support z
-        b = (target_Q - self.V_min) / self.delta_z
-        low, up = b.floor().to(torch.int64), b.ceil().to(torch.int64)
-        low[(up > 0) * (low == up)] -= 1
-        up[(low < (self.atoms - 1)) * (low == up)] += 1
+            offset = (
+                torch.linspace(0, (self.batch_size - 1) * self.atoms, self.batch_size)
+                .long()
+                .unsqueeze(1)
+                .expand(self.batch_size, self.atoms)
+                .to(self.device)
+            )
 
-        # Distribute probability of Tz
-        m = state.new_zeros(self.batch_size, self.atoms)
-        offset = (
-            torch.linspace(0, ((self.batch_size - 1) * self.atoms), self.batch_size)
-            .unsqueeze(1)
-            .expand(self.batch_size, self.atoms)
-            .to(action)
-        )
-        m.view(-1).index_add_(
-            0, (low + offset).view(-1), (pns_a * (up.float() - b)).view(-1)
-        )  # m_l = m_l + p(s_t+n, a*)(u - b)
-        m.view(-1).index_add_(
-            0, (up + offset).view(-1), (pns_a * (b - low.float())).view(-1)
-        )  # m_u = m_u + p(s_t+n, a*)(b - l)
+            proj_dist = torch.zeros(next_dist.size(), device=self.device)
+            proj_dist.view(-1).index_add_(
+                0, (lower + offset).view(-1), (next_dist * (upper.float() - b)).view(-1)
+            )
+            proj_dist.view(-1).index_add_(
+                0, (upper + offset).view(-1), (next_dist * (b - lower.float())).view(-1)
+            )
 
-        loss = -torch.sum(m * log_p1s_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
-        self.Q.zero_grad()
-        mean_loss = (weights * loss).mean()
-        mean_loss.backward()  # Backpropagate importance-weighted minibatch loss
-        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
-        grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
+        dist = self.Q.dist(state)
+        log_p = torch.log(dist[range(self.batch_size), action])
+        elementwise_loss = -(proj_dist * log_p).sum(1)
+
+        loss = torch.mean(elementwise_loss * weights)
+
+        self.Q_optimizer.zero_grad()
+        loss.backward()
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)
         self.Q_optimizer.step()
+        grad_magnitude = list(self.Q.named_parameters())[-2][1].grad.clone().norm()
 
-        # Update target network by polyak or full copy every X iterations.
         self.iterations += 1
         self.maybe_update_target()
 
@@ -115,7 +108,7 @@ class Rainbow(object):
             priority = loss.clamp(min=self.min_priority).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
-        return mean_loss, grad_magnitude
+        return loss, grad_magnitude
 
     def huber(self, x):
         return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()

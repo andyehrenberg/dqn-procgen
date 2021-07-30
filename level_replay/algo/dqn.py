@@ -194,6 +194,8 @@ class RainbowDQN(nn.Module):
         self.atoms = args.atoms
         self.action_space = action_space
 
+        self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(device=args.device)
+
         self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
         if args.noisy_layers:
@@ -207,17 +209,23 @@ class RainbowDQN(nn.Module):
             self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
             self.fc_z_a = nn.Linear(args.hidden_size, action_space * self.atoms)
 
-    def forward(self, x, log=False):
+    def dist(self, x):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
-        value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
-        advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
-        value, advantage = value.view(-1, 1, self.atoms), advantage.view(-1, self.action_space, self.atoms)
-        q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
-        if log:  # Use log softmax for numerical stability
-            q = F.log_softmax(q, dim=2)  # Log probabilities with action over second dimension
-        else:
-            q = F.softmax(q, dim=2)  # Probabilities with action over second dimension
+        value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, 1, self.atoms)  # Value stream
+        advantage = self.fc_z_a(F.relu(self.fc_h_a(x))).view(
+            -1, self.action_space, self.atoms
+        )  # Advantage stream
+        q_atoms = value + advantage - advantage.mean(1, keepdim=True)
+
+        dist = F.softmax(q_atoms, dim=-1)
+        dist = dist.clamp(min=1e-3)
+
+        return dist
+
+    def forward(self, x):
+        dist = self.dist(x)
+        q = torch.sum(dist * self.support, dim=2)
 
         return q
 
