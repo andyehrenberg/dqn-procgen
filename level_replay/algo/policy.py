@@ -65,35 +65,22 @@ class Rainbow(object):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
         with torch.no_grad():
-            next_action = self.Q(next_state).argmax(1)
-            next_dist = self.Q_target.dist(next_state)[range(self.batch_size), next_action]
-            t_z = reward + not_done * self.gamma * self.support
-            t_z = t_z.clamp(min=self.V_min, max=self.V_max)
-            b = (t_z - self.V_min) / self.delta_z
-            lower = b.floor().long()
-            upper = b.ceil().long()
+            next_action = self.Q(next_state).argmax(-1)
+            next_prob = self.Q_target.dist(next_state)[range(self.batch_size), next_action, :]
 
-            offset = (
-                torch.linspace(0, (self.batch_size - 1) * self.atoms, self.batch_size)
-                .long()
-                .unsqueeze(1)
-                .expand(self.batch_size, self.atoms)
-                .to(self.device)
-            )
+        atoms_target = reward + self.gamma ** self.n * not_done * self.support.view(1, -1)
+        atoms_target = atoms_target.clamp(self.V_min, self.V_max).unsqueeze(1)
+        target_prob = (1 - (atoms_target - self.support.view(1, -1, 1)).abs() / self.delta_z).clamp(
+            0, 1
+        ) * next_prob.unsqueeze(1)
+        target_prob = target_prob.sum(-1)
 
-            proj_dist = torch.zeros(next_dist.size(), device=self.device)
-            proj_dist.view(-1).index_add_(
-                0, (lower + offset).view(-1), (next_dist * (upper.float() - b)).view(-1)
-            )
-            proj_dist.view(-1).index_add_(
-                0, (upper + offset).view(-1), (next_dist * (b - lower.float())).view(-1)
-            )
+        log_prob = torch.log(self.Q.dist(state))
+        log_prob = log_prob[range(self.batch_size), action, :]
 
-        dist = self.Q.dist(state)
-        log_p = torch.log(dist[range(self.batch_size), action])
-        elementwise_loss = -(proj_dist * log_p).sum(1)
+        KL = (target_prob * target_prob.add(1e-5).log() - target_prob * log_prob).sum(-1)
 
-        loss = torch.mean(elementwise_loss * weights)
+        loss = torch.mean(KL * weights)
 
         self.Q_optimizer.zero_grad()
         loss.backward()
@@ -105,7 +92,7 @@ class Rainbow(object):
         self.maybe_update_target()
 
         if self.PER:
-            priority = elementwise_loss.clamp(min=self.min_priority).cpu().data.numpy().flatten()
+            priority = KL.clamp(min=self.min_priority).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
         return loss, grad_magnitude
