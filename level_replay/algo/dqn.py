@@ -225,7 +225,7 @@ class RainbowDQN(nn.Module):
 
     def forward(self, x):
         dist = self.dist(x)
-        q = torch.sum(dist * self.support, dim=2)
+        q = (dist * self.support).sum(-1)
 
         return q
 
