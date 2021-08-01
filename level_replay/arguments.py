@@ -41,6 +41,7 @@ parser.add_argument("--hidden_size", type=int, default=256, help="state embeddin
 parser.add_argument(
     "--arch", type=str, default="large", choices=["small", "large", "simple"], help="agent architecture"
 )
+parser.add_argument("--num_workers", type=int, default=1)
 
 # Procgen arguments.
 parser.add_argument("--distribution_mode", default="easy", help="distribution of envs for procgen")
