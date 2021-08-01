@@ -14,11 +14,10 @@ import numpy as np
 import torch
 import wandb
 
-from level_replay.algo.ppo import SimplePPO
+from level_replay.algo.ppo import MultiWorkerPPO
 from level_replay import utils
 from level_replay.arguments import parser
 from level_replay.envs import make_lr_venv
-from level_replay.model import model_for_env_name
 from level_replay.storage import SimpleRolloutStorage
 from level_replay.utils import ppo_normalise_reward
 
@@ -93,15 +92,17 @@ def train(args, seeds):
 
     # is_minigrid = args.env_name.startswith("MiniGrid")
 
-    actor_critic = model_for_env_name(args, envs)
-    actor_critic.to(device)
+    rollouts = [
+        SimpleRolloutStorage(
+            args.num_steps,
+            args.num_processes,
+            envs.observation_space.shape,
+            envs.action_space,
+        )
+        for _ in range(args.num_workers)
+    ]
 
-    rollouts = SimpleRolloutStorage(
-        args.num_steps,
-        args.num_processes,
-        envs.observation_space.shape,
-        envs.action_space,
-    )
+    agent = MultiWorkerPPO(args, envs)
 
     def checkpoint():
         if args.disable_checkpoint:
@@ -109,25 +110,12 @@ def train(args, seeds):
         logging.info("Saving checkpoint to %s", checkpointpath)
         torch.save(
             {
-                "model_state_dict": actor_critic.state_dict(),
+                "model_state_dict": agent.actor_critic.state_dict(),
                 "optimizer_state_dict": agent.optimizer.state_dict(),
                 "args": vars(args),
             },
             checkpointpath,
         )
-
-    agent = SimplePPO(
-        actor_critic,
-        args.clip_param,
-        args.ppo_epoch,
-        args.num_mini_batch,
-        args.value_loss_coef,
-        args.entropy_coef,
-        lr=args.lr,
-        eps=args.eps,
-        max_grad_norm=args.max_grad_norm,
-        env_name=args.env_name,
-    )
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -135,21 +123,23 @@ def train(args, seeds):
     else:
         obs = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
-    rollouts.obs[0].copy_(obs)
-    rollouts.to(device)
+
+    for idx, rollouts_ in enumerate(rollouts):
+        rollouts_.obs[0].copy_(obs[idx * args.num_processes : (idx + 1) * args.num_processes])
+        rollouts_.to(device)
 
     episode_rewards: deque = deque(maxlen=10)
-    num_updates = int(args.num_env_steps) // args.num_steps // args.num_processes
+    num_updates = int(args.num_env_steps) // args.num_steps // args.num_processes // args.num_workers
 
     count = 0
     for j in range(num_updates):
-        actor_critic.train()
+        agent.actor_critic.train()
         for step in range(args.num_steps):
             count += 1
             # Sample actions
             with torch.no_grad():
-                obs_id = rollouts.obs[step]
-                value, action, action_log_dist = actor_critic.act(obs_id)
+                obs_id = torch.cat([rollouts_.obs[step] for rollouts_ in rollouts])
+                value, action, action_log_dist = agent.actor_critic.act(obs_id)
                 action_log_prob = action_log_dist.gather(-1, action)
 
             # Obser reward and next obs
@@ -179,42 +169,45 @@ def train(args, seeds):
                 [[0.0] if "bad_transition" in info.keys() else [1.0] for info in infos]
             )
 
-            rollouts.insert(
-                obs,
-                action,
-                action_log_prob,
-                action_log_dist,
-                value,
-                reward,
-                masks,
-                bad_masks,
-                level_seeds,
-            )
+            for idx, rollouts_ in enumerate(rollouts):
+                rollouts_.insert(
+                    obs[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    action[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    action_log_prob[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    action_log_dist[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    value[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    reward[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    masks[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    bad_masks[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    level_seeds[idx * args.num_processes : (idx + 1) * args.num_processes],
+                )
 
-        with torch.no_grad():
-            obs_id = rollouts.obs[-1]
-            next_value = actor_critic.get_value(obs_id).detach()
+        for rollouts_ in rollouts:
+            with torch.no_grad():
+                obs_id = rollouts_.obs[-1]
+                next_value = agent.actor_critic.get_value(obs_id).detach()
 
-        rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
+            rollouts_.compute_returns(next_value, args.gamma, args.gae_lambda)
 
         # Update level sampler
         if level_sampler:
-            level_sampler.update_with_rollouts(rollouts)
+            level_sampler.update_with_rollouts(rollouts[0])
 
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
         wandb.log({"Value Loss": value_loss}, step=count * args.num_processes)
-        rollouts.after_update()
+        for rollouts_ in rollouts:
+            rollouts_.after_update()
         if level_sampler:
             level_sampler.after_update()
 
         # Log stats every log_interval updates or if it is the last update
         if (j % args.log_interval == 0 and len(episode_rewards) > 1) or j == num_updates - 1:
-            mean_eval_rewards = np.mean(evaluate(args, actor_critic, args.num_test_seeds, device))
+            mean_eval_rewards = np.mean(evaluate(args, agent.actor_critic, args.num_test_seeds, device))
 
             mean_train_rewards = np.mean(
                 evaluate(
                     args,
-                    actor_critic,
+                    agent.actor_critic,
                     args.num_test_seeds,
                     device,
                     start_level=0,
@@ -240,7 +233,9 @@ def train(args, seeds):
             if j == num_updates - 1:
                 print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
                 # logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
-                final_eval_episode_rewards = evaluate(args, actor_critic, args.final_num_test_seeds, device)
+                final_eval_episode_rewards = evaluate(
+                    args, agent.actor_critic, args.final_num_test_seeds, device
+                )
 
                 mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
                 median_final_eval_episide_rewards = np.median(final_eval_episode_rewards)
@@ -261,7 +256,7 @@ def train(args, seeds):
                 os.mkdir("models")
             torch.save(
                 {
-                    "model_state_dict": actor_critic.state_dict(),
+                    "model_state_dict": agent.actor_critic.state_dict(),
                     "args": vars(args),
                 },
                 args.model_path,
