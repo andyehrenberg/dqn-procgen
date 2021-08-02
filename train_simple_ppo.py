@@ -100,7 +100,7 @@ def train(args, seeds):
     rollouts = [
         SimpleRolloutStorage(
             args.num_steps,
-            args.num_processes,
+            int(args.num_processes / args.num_workers),
             envs.observation_space.shape,
             envs.action_space,
         )
