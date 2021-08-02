@@ -35,6 +35,10 @@ def train(args, seeds):
     if "cuda" in device.type:
         print("Using CUDA\n")
 
+    assert args.num_processes / args.num_workers == int(
+        args.num_processes / args.num_workers
+    ), "Must be able to divide num processes evenly"
+
     torch.set_num_threads(1)
 
     wandb.init(
@@ -126,7 +130,9 @@ def train(args, seeds):
     level_seeds = level_seeds.unsqueeze(-1)
 
     for idx, rollouts_ in enumerate(rollouts):
-        rollouts_.obs[0].copy_(obs[idx * args.num_processes : (idx + 1) * args.num_processes])
+        begin = int(idx * args.num_processes / args.num_workers)
+        end = int((idx + 1) * args.num_processes / args.num_workers)
+        rollouts_.obs[0].copy_(obs[begin:end, :, :, :])
         rollouts_.to(device)
 
     episode_rewards: deque = deque(maxlen=10)
@@ -171,16 +177,18 @@ def train(args, seeds):
             )
 
             for idx, rollouts_ in enumerate(rollouts):
+                begin = int(idx * args.num_processes / args.num_workers)
+                end = int((idx + 1) * args.num_processes / args.num_workers)
                 rollouts_.insert(
-                    obs[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    action[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    action_log_prob[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    action_log_dist[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    value[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    reward[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    masks[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    bad_masks[idx * args.num_processes : (idx + 1) * args.num_processes],
-                    level_seeds[idx * args.num_processes : (idx + 1) * args.num_processes],
+                    obs[begin:end],
+                    action[begin:end],
+                    action_log_prob[begin:end],
+                    action_log_dist[begin:end],
+                    value[begin:end],
+                    reward[begin:end],
+                    masks[begin:end],
+                    bad_masks[begin:end],
+                    level_seeds[begin:end],
                 )
 
         for rollouts_ in rollouts:
