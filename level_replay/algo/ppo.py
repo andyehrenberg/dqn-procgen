@@ -125,7 +125,7 @@ class MultiWorkerPPO:
 
         self.max_grad_norm = args.max_grad_norm
 
-        self.optimizer = torch.optim.Adam(self.actor_critic.parameters(), lr=args.learning_rate, eps=args.eps)
+        self.optimizer = torch.optim.Adam(self.actor_critic.parameters(), lr=args.lr)
 
         self.env_name = args.env_name
 

@@ -209,7 +209,7 @@ class RainbowDQN(nn.Module):
             self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
             self.fc_z_a = nn.Linear(args.hidden_size, action_space * self.atoms)
 
-    def dist(self, x):
+    def dist(self, x, log=False):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, 1, self.atoms)  # Value stream
@@ -218,8 +218,11 @@ class RainbowDQN(nn.Module):
         )  # Advantage stream
         q_atoms = value + advantage - advantage.mean(1, keepdim=True)
 
-        dist = F.softmax(q_atoms, dim=-1)
-        dist = dist.clamp(min=1e-3)
+        if log:
+            dist = F.log_softmax(q_atoms, dim=-1)
+        else:
+            dist = F.softmax(q_atoms, dim=-1)
+            dist = dist.clamp(min=1e-4)
 
         return dist
 
