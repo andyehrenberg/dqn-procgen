@@ -128,6 +128,7 @@ class MultiWorkerPPO:
         self.optimizer = torch.optim.Adam(self.actor_critic.parameters(), lr=args.lr)
 
         self.env_name = args.env_name
+        self.device = args.device
 
     def update(self, rollouts_):
         advantages = list()
@@ -145,7 +146,7 @@ class MultiWorkerPPO:
                 for i in range(self.num_workers)
             ]
             for data_generator in data_generators:
-                loss = torch.Tensor([0])
+                loss = torch.Tensor([0]).to(self.device)
                 value_loss_ = 0
                 action_loss_ = 0
                 dist_entropy_ = 0
