@@ -35,6 +35,15 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
+    wandb.init(
+        settings=wandb.Settings(start_method="fork"),
+        project="off-policy-procgen",
+        entity="ucl-dark",
+        config=vars(args),
+        tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
+        group=args.wandb_group,
+    )
+
     start_level = 0
     if args.full_train_distribution:
         num_levels = 0

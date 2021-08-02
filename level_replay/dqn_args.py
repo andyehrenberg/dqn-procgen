@@ -29,6 +29,7 @@ parser.add_argument(
     default=False,
     help="Whether to use polyak update to target network",
 )
+parser.add_argument("--lr", type=float, default=5e-4)
 parser.add_argument("--target_update", type=int, default=1000, help="How often to update target network")
 parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
@@ -75,6 +76,9 @@ parser.add_argument("--render", type=lambda x: bool(strtobool(x)), default=False
 parser.add_argument("--checkpoint_interval", type=int, default=0)
 parser.add_argument("--memory_capacity", type=float, default=1e6)
 parser.add_argument("--reward_clip", type=float, default=1)
+parser.add_argument(
+    "--arch", type=str, default="large", choices=["small", "large", "simple"], help="agent architecture"
+)
 
 # Level Replay parameters
 parser.add_argument("--level_replay_alpha", type=float, default=1.0)
