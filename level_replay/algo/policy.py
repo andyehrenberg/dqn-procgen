@@ -61,28 +61,44 @@ class Rainbow(object):
             return q.max(1)[0]
 
     def train(self, replay_buffer):
-        self.reset_noise()
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
+        log_prob = self.Q.dist(state, log=True)
+        log_prob_a = log_prob[range(self.batch_size), action]
+
         with torch.no_grad():
-            next_action = self.Q(next_state).argmax(-1)
-            next_prob = self.Q_target.dist(next_state)[range(self.batch_size), next_action, :]
+            next_prob = self.Q.dist(next_state)
+            next_dist = self.support.expand_as(next_prob) * next_prob
+            argmax_idx = next_dist.sum(-1).argmax(1)
 
-        atoms_target = reward + self.gamma ** self.n * not_done * self.support.view(1, -1)
-        atoms_target = atoms_target.clamp(self.V_min, self.V_max).unsqueeze(1)
-        target_prob = (1 - (atoms_target - self.support.view(1, -1, 1)).abs() / self.delta_z).clamp(
-            0, 1
-        ) * next_prob.unsqueeze(1)
-        target_prob = target_prob.sum(-1)
+            self.Q_target.reset_noise()
 
-        log_prob = torch.log(self.Q.dist(state))
-        log_prob = log_prob[range(self.batch_size), action, :]
+            next_prob = self.Q_target.dist(next_state)
+            next_prob_a = next_prob[range(self.batch_size), argmax_idx]
 
-        KL = (target_prob * target_prob.add(1e-5).log() - target_prob * log_prob).sum(-1)
+            Tz = reward.unsqueeze(1) + not_done * (self.gamma ** self.n) * self.support.unsqueeze(0)
+            Tz = Tz.clamp(min=self.V_min, max=self.V_max)
 
-        loss = torch.mean(KL * weights)
+            b = (Tz - self.V_min) / self.delta_z
+            lower, upper = b.floor().to(torch.int64), b.ceil().to(torch.int64)
+
+            lower[(upper > 0) * (lower == upper)] -= 1
+            upper[(lower < (self.atoms - 1)) * (lower == upper)] += 1
+
+            m = state.new_zeros(self.batch_size, self.atoms)
+            offset = (
+                torch.linspace(0, ((self.batch_size - 1) * self.atoms), self.batch_size)
+                .unsqueeze(1)
+                .expand(self.batch_size, self.atoms)
+                .to(action)
+            )
+            m.view(-1).index_add_(0, (lower + offset).view(-1), (next_prob_a * (upper.float() - b)).view(-1))
+            m.view(-1).index_add_(0, (upper + offset).view(-1), (next_prob_a * (b - lower.float())).view(-1))
+
+        KL = -torch.sum(m * log_prob_a, 1)
 
         self.Q_optimizer.zero_grad()
+        loss = (weights * KL).mean()
         loss.backward()
         clip_grad_norm_(self.Q.parameters(), self.norm_clip)
         self.Q_optimizer.step()
