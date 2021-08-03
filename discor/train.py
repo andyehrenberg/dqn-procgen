@@ -1,4 +1,3 @@
-import logging
 import os
 from collections import deque
 from typing import List
@@ -9,10 +8,10 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import DDQN, Rainbow
-from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
-from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
+from level_replay.utils import ppo_normalise_reward
+from discor.discor_args import parser
+from discor.discor import DisCor
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -27,9 +26,6 @@ def train(args, seeds):
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = seeds
-
-    args.sge_job_id = int(os.environ.get("JOB_ID", -1))
-    args.sge_task_id = int(os.environ.get("SGE_TASK_ID", -1))
 
     torch.set_num_threads(1)
 
@@ -65,10 +61,7 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args)
 
-    if args.rainbow:
-        agent = Rainbow(args)
-    else:
-        agent = DDQN(args)
+    agent = DisCor(args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -99,10 +92,6 @@ def train(args, seeds):
         )
 
     for t in range(num_steps):
-        if t % args.train_freq == 0:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
-
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -114,11 +103,8 @@ def train(args, seeds):
             cur_epsilon = epsilon(t)
             action, value = agent.select_action(state)
             for i in range(args.num_processes):
-                if (not args.rainbow or (args.rainbow and not args.noisy_layers)) and (
-                    np.random.uniform() < cur_epsilon
-                ):
+                if np.random.uniform() < cur_epsilon:
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
-            wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
@@ -143,9 +129,10 @@ def train(args, seeds):
                     n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
                 )
                 if done[i]:
-                    reward_deque_i = list(reward_deque[i])
-                    for j in range(1, len(reward_deque_i)):
-                        n_reward = multi_step_reward(reward_deque_i[j:], args.gamma)
+                    for j in range(1, args.multi_step):
+                        n_reward = multi_step_reward(
+                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
+                        )
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
@@ -153,14 +140,12 @@ def train(args, seeds):
                         )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
-                ppo_normalised_reward = ppo_normalise_reward(episode_reward, args.env_name)
-                min_max_normalised_reward = min_max_normalise_reward(episode_reward, args.env_name)
                 wandb.log(
                     {
                         "Train Episode Returns": episode_reward,
-                        "Train Episode Returns (normalised)": ppo_normalised_reward,
-                        "Train Episode Returns (ppo normalised)": ppo_normalised_reward,
-                        "Train Episode Returns (min-max normalised)": min_max_normalised_reward,
+                        "Train Episode Returns (normalised)": ppo_normalise_reward(
+                            episode_reward, args.env_name
+                        ),
                     },
                     step=t * args.num_processes,
                 )
@@ -176,10 +161,10 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
-            loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
+            q_loss, error_loss = agent.learn(replay_buffer)
+            wandb.log(
+                {"Value Loss": q_loss, "Error Estimation Loss": error_loss}, step=t * args.num_processes
+            )
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
             count_data = [
@@ -216,21 +201,17 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
-            test_ppo_normalised_reward = ppo_normalise_reward(mean_test_rewards, args.env_name)
-            train_ppo_normalised_reward = ppo_normalise_reward(mean_train_rewards, args.env_name)
-            test_min_max_normalised_reward = min_max_normalise_reward(mean_test_rewards, args.env_name)
-            train_min_max_normalised_reward = min_max_normalise_reward(mean_train_rewards, args.env_name)
             wandb.log(
                 {
                     "Test Evaluation Returns": mean_test_rewards,
                     "Train Evaluation Returns": mean_train_rewards,
                     "Generalization Gap:": mean_train_rewards - mean_test_rewards,
-                    "Test Evaluation Returns (normalised)": test_ppo_normalised_reward,
-                    "Train Evaluation Returns (normalised)": train_ppo_normalised_reward,
-                    "Test Evaluation Returns (ppo normalised)": test_ppo_normalised_reward,
-                    "Train Evaluation Returns (ppo normalised)": train_ppo_normalised_reward,
-                    "Test Evaluation Returns (min-max normalised)": test_min_max_normalised_reward,
-                    "Train Evaluation Returns (min-max normalised)": train_min_max_normalised_reward,
+                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_test_rewards, args.env_name
+                    ),
+                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
+                        mean_train_rewards, args.env_name
+                    ),
                 }
             )
 
@@ -274,12 +255,6 @@ def train(args, seeds):
 
 def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
-
-
-def load_seeds(seed_path):
-    seed_path = os.path.expandvars(os.path.expanduser(seed_path))
-    seeds = open(seed_path).readlines()
-    return [int(s) for s in seeds]
 
 
 def eval_policy(
@@ -344,12 +319,6 @@ def eval_policy(
     if progressbar:
         progressbar.close()
 
-    avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
-
-    if print_score:
-        print("---------------------------------------")
-        print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
-        print("---------------------------------------")
     return eval_episode_rewards
 
 
@@ -376,14 +345,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.disable(logging.CRITICAL)
-
-    if args.seed_path:
-        train_seeds = load_seeds(args.seed_path)
-    else:
-        train_seeds = generate_seeds(args.num_train_seeds)
+    train_seeds = generate_seeds(args.num_train_seeds)
 
     train(args, train_seeds)

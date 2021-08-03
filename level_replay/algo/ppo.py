@@ -146,7 +146,7 @@ class MultiWorkerPPO:
                 for i in range(self.num_workers)
             ]
             for data_generator in data_generators:
-                loss = torch.Tensor([0]).to(self.device)
+                loss = torch.tensor(0, device=self.device)
                 value_loss_ = 0
                 action_loss_ = 0
                 dist_entropy_ = 0
