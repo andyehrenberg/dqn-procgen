@@ -1,4 +1,3 @@
-import logging
 import os
 from collections import deque
 from typing import List
@@ -9,10 +8,10 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import DDQN, Rainbow
-from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward
+from discor.discor_args import parser
+from discor.discor import DisCor
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -62,10 +61,7 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args)
 
-    if args.rainbow:
-        agent = Rainbow(args)
-    else:
-        agent = DDQN(args)
+    agent = DisCor(args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -96,10 +92,6 @@ def train(args, seeds):
         )
 
     for t in range(num_steps):
-        if t % args.train_freq == 0:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
-
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -111,11 +103,8 @@ def train(args, seeds):
             cur_epsilon = epsilon(t)
             action, value = agent.select_action(state)
             for i in range(args.num_processes):
-                if (not args.rainbow or (args.rainbow and not args.noisy_layers)) and (
-                    np.random.uniform() < cur_epsilon
-                ):
+                if np.random.uniform() < cur_epsilon:
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
-            wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
@@ -172,10 +161,10 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
-            loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
+            q_loss, error_loss = agent.learn(replay_buffer)
+            wandb.log(
+                {"Value Loss": q_loss, "Error Estimation Loss": error_loss}, step=t * args.num_processes
+            )
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
             count_data = [
@@ -268,12 +257,6 @@ def generate_seeds(num_seeds, base_seed=0):
     return [base_seed + i for i in range(num_seeds)]
 
 
-def load_seeds(seed_path):
-    seed_path = os.path.expandvars(os.path.expanduser(seed_path))
-    seeds = open(seed_path).readlines()
-    return [int(s) for s in seeds]
-
-
 def eval_policy(
     args,
     policy,
@@ -336,12 +319,6 @@ def eval_policy(
     if progressbar:
         progressbar.close()
 
-    avg_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
-
-    if print_score:
-        print("---------------------------------------")
-        print(f"Evaluation over {num_episodes} episodes: {avg_reward}")
-        print("---------------------------------------")
     return eval_episode_rewards
 
 
@@ -368,14 +345,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.disable(logging.CRITICAL)
-
-    if args.seed_path:
-        train_seeds = load_seeds(args.seed_path)
-    else:
-        train_seeds = generate_seeds(args.num_train_seeds)
+    train_seeds = generate_seeds(args.num_train_seeds)
 
     train(args, train_seeds)
