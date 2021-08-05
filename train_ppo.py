@@ -143,6 +143,8 @@ def train(args, seeds):
     count = 0
     for j in range(num_updates):
         actor_critic.train()
+        effective_rank = actor_critic.effective_rank()
+        wandb.log({"Effective Rank of DQN": effective_rank}, step=count * args.num_processes)
         for step in range(args.num_steps):
             count += 1
             # Sample actions

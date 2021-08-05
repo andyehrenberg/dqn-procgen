@@ -98,8 +98,6 @@ class DisCor(DDQN):
 
         error_loss = self.calc_error_loss(current_error, target_error)
 
-        print(error_loss)
-
         update(self.error_optimizer, error_loss, self.online_error)
 
         self.iterations += 1
