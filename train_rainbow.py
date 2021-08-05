@@ -181,6 +181,10 @@ def train(args, seeds):
             loss, grad_magnitude = agent.train(replay_buffer)
             wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
+        if t % 500 == 0:
+            effective_rank = agent.Q.effective_rank()
+            wandb.log({"Effective Rank of DQN": effective_rank}, step=t * args.num_processes)
+
         if (t + 1) % int((num_steps - 1) / 10) == 0:
             count_data = [
                 [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
