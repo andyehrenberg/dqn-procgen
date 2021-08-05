@@ -256,7 +256,6 @@ class DQN(nn.Module):
 
     def forward(self, x, log=False):
         x = self.features(x)
-
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
         advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
@@ -269,6 +268,16 @@ class DQN(nn.Module):
         )
         q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
         return q
+
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.fc_h_v.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
 
 
 class SimpleDQN(nn.Module):
@@ -313,6 +322,16 @@ class SimpleDQN(nn.Module):
         )
         q = value + advantage - advantage.mean(1, keepdim=True)
         return q
+
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.fc_h_v.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
 
 
 class TwoNetworkDQN(nn.Module):

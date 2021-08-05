@@ -79,8 +79,6 @@ class DisCor(DDQN):
             s = seed.cpu().numpy()[0]
             self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
 
-        print(weights)
-
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
             target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
@@ -95,7 +93,12 @@ class DisCor(DDQN):
         current_error = self.calc_online_error(state, action)
         target_error = self.calc_target_error(next_state, not_done, current_Q, target_Q)
 
+        print("Curr: ", current_error.mean())
+        print("Target: ", target_error.mean())
+
         error_loss = self.calc_error_loss(current_error, target_error)
+
+        print(error_loss)
 
         update(self.error_optimizer, error_loss, self.online_error)
 
