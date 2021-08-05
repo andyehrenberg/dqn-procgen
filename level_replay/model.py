@@ -196,6 +196,16 @@ class Policy(nn.Module):
 
         return value, action_log_probs, dist_entropy, rnn_hxs
 
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.base.fc.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
+
 
 class SimplePolicy(nn.Module):
     """
@@ -274,6 +284,16 @@ class SimplePolicy(nn.Module):
         dist_entropy = dist.entropy().mean()
 
         return value, action_log_probs, dist_entropy
+
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.fc2.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
 
 
 class NNBase(nn.Module):
