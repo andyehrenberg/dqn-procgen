@@ -188,73 +188,80 @@ class NoisyLinear(nn.Module):
             return F.linear(input, self.weight_mu, self.bias_mu)
 
 
-class RainbowDQN(nn.Module):
-    def __init__(self, args, action_space):
-        super().__init__()
-        self.atoms = args.atoms
-        self.action_space = action_space
-
-        self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(device=args.device)
-
-        self.features = ImpalaCNN(args.state_dim[0])
-        self.conv_output_size = 2048
-        if args.noisy_layers:
-            self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-            self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
-            self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
-            self.fc_z_a = NoisyLinear(args.hidden_size, action_space * self.atoms, std_init=args.noisy_std)
-        else:
-            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
-            self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
-            self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
-            self.fc_z_a = nn.Linear(args.hidden_size, action_space * self.atoms)
-
-    def dist(self, x, log=False):
-        x = self.features(x)
-        x = x.view(-1, self.conv_output_size)
-        value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, 1, self.atoms)  # Value stream
-        advantage = self.fc_z_a(F.relu(self.fc_h_a(x))).view(
-            -1, self.action_space, self.atoms
-        )  # Advantage stream
-        q_atoms = value + advantage - advantage.mean(1, keepdim=True)
-
-        if log:
-            dist = F.log_softmax(q_atoms, dim=-1)
-        else:
-            dist = F.softmax(q_atoms, dim=-1)
-            dist = dist.clamp(min=1e-4)
-
-        return dist
-
-    def forward(self, x):
-        dist = self.dist(x)
-        q = (dist * self.support).sum(-1)
-
-        return q
-
-    def reset_noise(self):
-        for name, module in self.named_children():
-            if "fc" in name:
-                module.reset_noise()
-
-
 class DQN(nn.Module):
     def __init__(self, args, action_space):
         super(DQN, self).__init__()
         self.action_space = action_space
+        self.dueling = args.dueling
+        self.c51 = args.c51
+        if self.c51:
+            self.atoms = args.atoms
+            self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(device=args.device)
+            self.V_min = args.V_min
+            self.V_max = args.V_max
+            self.delta_z = float(self.V_max - self.V_min) / (self.atoms - 1)
+        self.noisy_layers = args.noisy_layers
+        self.make_network(args)
+        self.forward = (
+            self._forward_c51
+            if self.c51
+            else (self._forward_dueling if self.dueling else self._forward_no_duel)
+        )
 
+    def make_network(self, args):
         self.features = ImpalaCNN(args.state_dim[0])
         if args.state_dim != (3, 64, 64):
             example_state = torch.randn((1,) + args.state_dim)
             self.conv_output_size = self.features(example_state).shape[1]
         else:
             self.conv_output_size = 2048
-        self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.fc_z_v = nn.Linear(args.hidden_size, 1)
-        self.fc_z_a = nn.Linear(args.hidden_size, action_space)
 
-    def forward(self, x, log=False):
+        if self.noisy_layers:
+            if self.dueling and self.c51:
+                self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_z_v = NoisyLinear(args.hidden_size, self.atoms, std_init=args.noisy_std)
+                self.fc_z_a = NoisyLinear(
+                    args.hidden_size, self.action_space * self.atoms, std_init=args.noisy_std
+                )
+            elif self.dueling:
+                self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_h_a = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_z_v = NoisyLinear(args.hidden_size, 1, std_init=args.noisy_std)
+                self.fc_z_a = NoisyLinear(args.hidden_size, self.action_space, std_init=args.noisy_std)
+            elif self.c51:
+                self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_z_v = NoisyLinear(
+                    args.hidden_size, self.action_space * self.atom, std_init=args.noisy_std
+                )
+            else:
+                self.fc_h_v = NoisyLinear(self.conv_output_size, args.hidden_size, std_init=args.noisy_std)
+                self.fc_z_v = NoisyLinear(args.hidden_size, self.action_space, std_init=args.noisy_std)
+        else:
+            if self.dueling and self.c51:
+                self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
+                self.fc_z_a = nn.Linear(args.hidden_size, self.action_space * self.atoms)
+            elif self.dueling:
+                self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_z_v = nn.Linear(args.hidden_size, 1)
+                self.fc_z_a = nn.Linear(args.hidden_size, self.action_space)
+            elif self.c51:
+                self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_z_v = nn.Linear(args.hidden_size, self.action_space * self.atoms)
+            else:
+                self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+                self.fc_z_v = nn.Linear(args.hidden_size, self.action_space)
+
+    def _forward_c51(self, x, log=False):
+        dist = self.dist(x, log)
+        q = (dist * self.support).sum(-1)
+
+        return q
+
+    def _forward_dueling(self, x):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
@@ -269,6 +276,12 @@ class DQN(nn.Module):
         q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
         return q
 
+    def _forward_no_duel(self, x):
+        x = self.features(x)
+        x = x.view(-1, self.conv_output_size)
+        q = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.action_space)
+        return q
+
     def effective_rank(self, delta=0.01):
         _, s, _ = torch.svd(self.fc_h_v.weight)
         diag_sum = torch.sum(s)
@@ -278,6 +291,37 @@ class DQN(nn.Module):
             k += 1
             partial_sum += s[k]
         return k
+
+    def dist(self, x, log=False):
+        if self.c51:
+            x = self.features(x)
+            x = x.view(-1, self.conv_output_size)
+            if self.dueling:
+                value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, 1, self.atoms)  # Value stream
+                advantage = self.fc_z_a(F.relu(self.fc_h_a(x))).view(
+                    -1, self.action_space, self.atoms
+                )  # Advantage stream
+                q_atoms = value + advantage - advantage.mean(1, keepdim=True)
+            else:
+                q_atoms = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.action_space, self.atoms)
+
+            if log:
+                dist = F.log_softmax(q_atoms, dim=-1)
+            else:
+                dist = F.softmax(q_atoms, dim=-1)
+                dist = dist.clamp(min=1e-4)
+
+            return dist
+        else:
+            pass
+
+    def reset_noise(self):
+        if self.noisy_layers:
+            for name, module in self.named_children():
+                if "fc" in name:
+                    module.reset_noise()
+        else:
+            pass
 
 
 class SimpleDQN(nn.Module):
