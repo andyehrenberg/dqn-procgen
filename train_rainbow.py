@@ -35,7 +35,7 @@ def train(args, seeds):
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
         project=args.wandb_project,
-        entity="ucl-dark",
+        entity="andyehrenberg",
         config=vars(args),
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
