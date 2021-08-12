@@ -43,11 +43,7 @@ class Buffer(AbstractBuffer):
             self.size_ptr = -1
 
         elif self.prioritized:
-            num_updates = (
-                args.num_updates
-                * (args.T_max // args.num_processes - args.start_timesteps)
-                // args.train_freq
-            )
+            num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
             self.beta = args.beta
@@ -140,9 +136,7 @@ class RankBuffer(AbstractBuffer):
         super(RankBuffer, self).__init__(args)
 
         self.prioritized = args.PER
-        num_updates = (
-            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-        )
+        num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
 
         self.beta = args.beta
         self.beta_stepper = (1 - self.beta) / float(num_updates)
@@ -400,9 +394,7 @@ class AtariBuffer(AbstractBuffer):
     def __init__(self, args):
         super(AtariBuffer, self).__init__(args)
         self.prioritized = args.PER
-        num_updates = (
-            args.num_updates * (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
-        )
+        num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
         if self.prioritized:
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
