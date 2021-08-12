@@ -43,6 +43,8 @@ def train(args, seeds):
         tags=["ppo"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
+    wandb.run.name = f"ppo-{args.env_name}-{args.num_train_seeds}-levels"
+    wandb.run.save()
 
     utils.seed(args.seed)
 

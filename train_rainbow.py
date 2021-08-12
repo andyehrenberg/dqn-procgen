@@ -40,6 +40,8 @@ def train(args, seeds):
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
+    wandb.run.name = f"dqn-{args.env_name}-{args.num_train_seeds}-levels"
+    wandb.run.save()
 
     num_levels = 1
     level_sampler_args = dict(
