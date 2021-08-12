@@ -34,7 +34,7 @@ def train(args, seeds):
 
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
-        project="off-policy-procgen",
+        project=args.wandb_project,
         entity="ucl-dark",
         config=vars(args),
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),

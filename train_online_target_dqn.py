@@ -121,7 +121,6 @@ def train(args, seeds):
     reward_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
 
-    recent_returns = {seed: 0 for seed in seeds}
     s0_value_estimates = {seed: 0 for seed in seeds}
 
     loss, grad_magnitude = None, None
@@ -189,11 +188,9 @@ def train(args, seeds):
                                 n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
                             )
                 if "episode" in info.keys():
-                    episode_reward = info["episode"]["r"]
                     state_deque[i].clear()
                     reward_deque[i].clear()
                     action_deque[i].clear()
-                    plot_level_returns(recent_returns, level_seeds, episode_reward, i, step=count)
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
