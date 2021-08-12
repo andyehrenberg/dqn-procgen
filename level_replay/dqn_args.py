@@ -113,13 +113,19 @@ parser.add_argument(
     help="Whether to log with wandb or save results locally",
 )
 parser.add_argument(
-    "--wandb-tags",
+    "--wandb_project",
+    type=str,
+    default="off-policy-procgen",
+    choices=["off-policy-procgen", "thesis-experiments"],
+)
+parser.add_argument(
+    "--wandb_tags",
     type=str,
     default="",
     help="Additional tags for this wandb run",
 )
 parser.add_argument(
-    "--wandb-group",
+    "--wandb_group",
     type=str,
     default="",
     help="Wandb group for this run",
