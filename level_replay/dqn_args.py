@@ -7,15 +7,15 @@ parser = argparse.ArgumentParser(description="DQN")
 parser.add_argument(
     "--start_timesteps", type=int, default=2000, help="Timesteps until using DQN to take actions"
 )
-parser.add_argument("--train_freq", type=int, default=4, help="Number of steps between DQN updates")
-parser.add_argument("--num_updates", type=int, default=1, help="Number of DQN updates to make at a time")
-parser.add_argument("--eval_freq", type=int, default=2000, help="Evaluation frequency")
+parser.add_argument("--train_freq", type=int, default=1, help="Number of steps between DQN updates")
+parser.add_argument("--eval_freq", type=int, default=1000, help="Evaluation frequency")
 parser.add_argument("--T_max", type=int, default=25e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
 
 # Model parameters
-parser.add_argument("--rainbow", type=lambda x: bool(strtobool(x)), default=False)
-parser.add_argument("--noisy_layers", type=lambda x: bool(strtobool(x)), default=True)
+parser.add_argument("--c51", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--dueling", type=lambda x: bool(strtobool(x)), default=True)
+parser.add_argument("--noisy_layers", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--simple_dqn", type=lambda x: bool(strtobool(x)), default=False, help="simple dqn arch")
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
 parser.add_argument("--num_actions", type=int, default=15, help="Action space dimension")
@@ -29,8 +29,8 @@ parser.add_argument(
     default=False,
     help="Whether to use polyak update to target network",
 )
-parser.add_argument("--lr", type=float, default=5e-4)
-parser.add_argument("--target_update", type=int, default=1000, help="How often to update target network")
+parser.add_argument("--lr", type=float, default=2.5e-4)
+parser.add_argument("--target_update", type=int, default=32000, help="How often to update target network")
 parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
 parser.add_argument("--end_eps", type=float, default=0.1, help="end epsilon")

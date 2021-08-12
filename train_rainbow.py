@@ -9,7 +9,7 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import DDQN, Rainbow
+from level_replay.algo.policy import DQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
@@ -67,10 +67,7 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args)
 
-    if args.rainbow:
-        agent = Rainbow(args)
-    else:
-        agent = DDQN(args)
+    agent = DQNAgent(args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -102,8 +99,8 @@ def train(args, seeds):
 
     for t in range(num_steps):
         if t % args.train_freq == 0:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
+            if agent.Q.noisy_layers:
+                agent.Q.reset_noise()
 
         if t < args.start_timesteps:
             action = (
@@ -116,9 +113,7 @@ def train(args, seeds):
             cur_epsilon = epsilon(t)
             action, value = agent.select_action(state)
             for i in range(args.num_processes):
-                if (not args.rainbow or (args.rainbow and not args.noisy_layers)) and (
-                    np.random.uniform() < cur_epsilon
-                ):
+                if np.random.uniform() < cur_epsilon:
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
             wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
@@ -178,8 +173,8 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:
-            if args.rainbow and args.noisy_layers:
-                agent.reset_noise()
+            if agent.Q.noisy_layers:
+                agent.Q.reset_noise()
             loss, grad_magnitude = agent.train(replay_buffer)
             wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
