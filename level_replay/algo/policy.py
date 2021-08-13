@@ -48,7 +48,13 @@ class DQNAgent(object):
         # For seed bar chart
         self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
 
-        self.loss = self._loss_c51 if self.Q.c51 else self._loss
+        if self.Q.c51:
+            self.loss = self._loss_c51
+        elif self.Q.qrdqn:
+            self.loss = self._loss_qrdqn
+            self.kappa = 1.0
+        else:
+            self.loss = self._loss
 
         # Number of training iterations
         self.iterations = 0
@@ -67,6 +73,8 @@ class DQNAgent(object):
 
     def train(self, replay_buffer):
         ind, loss, priority = self.loss(replay_buffer)
+
+        print(priority.shape)
 
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
@@ -157,6 +165,48 @@ class DQNAgent(object):
 
         return ind, loss, priority
 
+    def _loss_qrdqn(self, replay_buffer):
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+
+        for idx, seed in enumerate(seeds):
+            s = seed.cpu().numpy()[0]
+            if self.PER:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+            else:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+
+        quantiles = self.Q.quantiles(state)
+        action_index = action[..., None].expand(self.batch_size, self.Q.atoms, 1)
+        curr_quantiles = quantiles.gather(dim=2, index=action_index)
+
+        with torch.no_grad():
+            self.Q.reset_noise()
+            next_q = self.Q(next_state)
+            next_action = torch.argmax(next_q, dim=1, keepdim=True)
+            quantiles = self.Q_target.quantiles(state)
+            action_index = next_action[..., None].expand(self.batch_size, self.Q.atoms, 1)
+            next_quantiles = quantiles.gather(dim=2, index=action_index).transpose(1, 2)
+            target_quantiles = reward[..., None] + (
+                not_done[..., None] * (self.gamma ** self.n_step) * next_quantiles
+            )
+
+        td = target_quantiles - curr_quantiles
+
+        loss = self.quantile_huber(td, self.Q.tau_hats, weights, self.kappa)
+
+        priority = (
+            td.clamp(min=self.min_priority)
+            .detach()
+            .abs()
+            .sum(dim=1)
+            .mean(dim=1, keepdim=True)
+            .cpu()
+            .numpy()
+            .flatten()
+        )
+
+        return ind, loss, priority
+
     def train_with_online_target(self, replay_buffer, online):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
@@ -190,8 +240,35 @@ class DQNAgent(object):
 
         return loss, grad_magnitude
 
-    def huber(self, x):
-        return torch.where(x < self.min_priority, 0.5 * x.pow(2), self.min_priority * x).mean()
+    def huber(self, td_errors, kappa=1.0):
+        return torch.where(
+            td_errors.abs() <= kappa, 0.5 * td_errors.pow(2), kappa * (td_errors.abs() - 0.5 * kappa)
+        )
+
+    def quantile_huber(self, td_errors, taus, weights=None, kappa=1.0):
+        assert not taus.requires_grad
+        batch_size, N, N_dash = td_errors.shape
+
+        # Calculate huber loss element-wisely.
+        element_wise_huber_loss = self.huber(td_errors, kappa)
+        assert element_wise_huber_loss.shape == (batch_size, N, N_dash)
+
+        # Calculate quantile huber loss element-wisely.
+        element_wise_quantile_huber_loss = (
+            torch.abs(taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
+        )
+        assert element_wise_quantile_huber_loss.shape == (batch_size, N, N_dash)
+
+        # Quantile huber loss.
+        batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
+        assert batch_quantile_huber_loss.shape == (batch_size, 1)
+
+        if weights is not None:
+            quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
+        else:
+            quantile_huber_loss = batch_quantile_huber_loss.mean()
+
+        return quantile_huber_loss
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
