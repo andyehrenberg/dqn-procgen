@@ -298,7 +298,7 @@ class SACAgent(object):
         self.gamma = args.gamma
 
         self.Q = TwinnedDQN(args, self.action_space).to(self.device)
-        self.policy = SAC(args, self.action_space)
+        self.policy = SAC(args, self.action_space).to(self.device)
         self.policy_optimizer = getattr(torch.optim, args.optimizer)(
             self.policy.parameters(), **args.optimizer_parameters
         )
