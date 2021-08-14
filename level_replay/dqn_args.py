@@ -36,7 +36,7 @@ parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon
 parser.add_argument("--end_eps", type=float, default=0.1, help="end epsilon")
 parser.add_argument("--eps_decay_period", type=int, default=8000)
 parser.add_argument("--eval_eps", type=float, default=0.05)
-parser.add_argument("--min_priority", type=float, default=1e-1)
+parser.add_argument("--min_priority", type=float, default=1e-2)
 parser.add_argument("--V_min", type=float, default=0)
 parser.add_argument("--V_max", type=float, default=100)
 parser.add_argument("--batch_size", type=int, default=512, help="Batch Size")

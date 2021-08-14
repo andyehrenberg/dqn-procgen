@@ -1,10 +1,11 @@
 import copy
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, SimpleDQN
+from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC, TwinnedDQN
 from torch.nn.utils import clip_grad_norm_
+
+import numpy as np
 
 
 class DQNAgent(object):
@@ -74,8 +75,6 @@ class DQNAgent(object):
     def train(self, replay_buffer):
         ind, loss, priority = self.loss(replay_buffer)
 
-        print(priority.shape)
-
         self.Q_optimizer.zero_grad()
         loss.backward()  # Backpropagate importance-weighted minibatch loss
         clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
@@ -110,7 +109,7 @@ class DQNAgent(object):
         current_Q = self.Q(state).gather(1, action)
 
         loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
-        priority = ((current_Q - target_Q).abs() + 1e-10).cpu().data.numpy().flatten()
+        priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
 
         return ind, loss, priority
 
@@ -290,21 +289,158 @@ class DQNAgent(object):
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
 
 
-class Conv_Q(nn.Module):
-    def __init__(self, frames, num_actions):
-        super(Conv_Q, self).__init__()
-        self.c1 = nn.Conv2d(frames, 32, kernel_size=8, stride=4)
-        self.c2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.c3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-        self.l1 = nn.Linear(3136, 512)
-        self.l2 = nn.Linear(512, num_actions)
+class SACAgent(object):
+    def __init__(self, args):
+        self.device = args.device
+        self.action_space = args.num_actions
+        self.batch_size = args.batch_size
+        self.norm_clip = args.norm_clip
+        self.gamma = args.gamma
 
-    def forward(self, state):
-        q = F.relu(self.c1(state))
-        q = F.relu(self.c2(q))
-        q = F.relu(self.c3(q))
-        q = F.relu(self.l1(q.reshape(-1, 3136)))
-        return self.l2(q)
+        self.Q = TwinnedDQN(args, self.action_space).to(self.device)
+        self.policy = SAC(args, self.action_space)
+        self.policy_optimizer = getattr(torch.optim, args.optimizer)(
+            self.policy.parameters(), **args.optimizer_parameters
+        )
+        self.Q_target = copy.deepcopy(self.Q)
+        self.Q1_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.q1.parameters(), **args.optimizer_parameters
+        )
+        self.Q2_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.q2.parameters(), **args.optimizer_parameters
+        )
+        for param in self.Q_target.parameters():
+            param.requires_grad = False
+
+        self.target_entropy = -np.log(1.0 / self.action_space) * 0.98
+
+        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+        self.alpha = self.log_alpha.exp()
+        self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=args.learning_rate)
+
+        self.PER = args.PER and not args.ERE
+        self.n_step = args.multi_step
+
+        self.alpha = args.alpha
+        self.min_priority = args.min_priority
+
+        # Target update rule
+        self.maybe_update_target = (
+            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        )
+        self.target_update_frequency = int(args.target_update // args.num_processes)
+        self.tau = args.tau
+
+        # Evaluation hyper-parameters
+        self.state_shape = (-1,) + args.state_dim
+        self.eval_eps = args.eval_eps
+        self.num_actions = args.num_actions
+
+        # For seed bar chart
+        self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
+
+        # Number of training iterations
+        self.iterations = 0
+
+    def select_action(self, x, explore=True):
+        if explore:
+            return self._explore(x)
+        else:
+            return self._exploit(x)
+
+    def _explore(self, x):
+        with torch.no_grad():
+            action, _, _ = self.policy.sample(x)
+            return action
+
+    def _exploit(self, x):
+        with torch.no_grad():
+            action = self.policy.act(x)
+            return action
+
+    def train(self, replay_buffer):
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+
+        for idx, seed in enumerate(seeds):
+            s = seed.cpu().numpy()[0]
+            if self.PER:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+            else:
+                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+
+        q1_loss, q2_loss, td = self.update_critic(state, action, next_state, reward, not_done, weights)
+        policy_loss, entropies = self.update_actor(state, action, next_state, reward, not_done, weights)
+        entropy_loss = self.update_alpha(entropies, weights)
+
+        if self.PER:
+            priority = td.clamp(min=self.min_priority).cpu().data.numpy().flatten()
+            replay_buffer.update_priority(ind, priority)
+
+        return q1_loss, q2_loss, policy_loss, entropy_loss
+
+    def update_critic(self, state, action, next_state, reward, not_done, weights):
+        current_q1, current_q2 = self.Q(state)
+        current_q1 = current_q1.gather(1, action)
+        current_q2 = current_q2.gather(1, action)
+
+        with torch.no_grad():
+            _, action_probs, log_action_probs = self.policy.sample(next_state)
+            next_q1, next_q2 = self.Q_target(next_state)
+            next_q = (action_probs * (torch.min(next_q1, next_q2) - self.alpha * log_action_probs)).sum(
+                dim=1, keepdim=True
+            )
+
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * next_q
+
+        td = torch.abs(current_q1.detach() - target_Q)
+
+        q1_loss = torch.mean((current_q1 - target_Q).pow(2) * weights)
+        q2_loss = torch.mean((current_q2 - target_Q).pow(2) * weights)
+
+        self.Q1_optimizer.zero_grad()
+        q1_loss.backward()
+        self.Q1_optimizer.step()
+        self.Q2_optimizer.zero_grad()
+        q2_loss.backward()
+        self.Q2_optimizer.step()
+
+        return q1_loss, q2_loss, td
+
+    def update_actor(self, state, action, next_state, reward, not_done, weights):
+        _, action_probs, log_action_probs = self.policy.sample(state)
+
+        with torch.no_grad():
+            q1, q2 = self.Q(state)
+            q = torch.min(q1, q2)
+
+        entropies = -torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
+        q = torch.sum(torch.min(q1, q2) * action_probs, dim=1, keepdim=True)
+
+        policy_loss = (weights * (-q - self.alpha * entropies)).mean()
+
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
+        return policy_loss, entropies.detach()
+
+    def update_alpha(self, entropies, weights):
+        entropy_loss = -torch.mean(self.log_alpha * (self.target_entropy - entropies) * weights)
+
+        self.alpha_optim.zero_grad()
+        entropy_loss.backward()
+        self.alpha_optim.step()
+        self.alpha = self.log_alpha.exp()
+
+        return entropy_loss
+
+    def polyak_target_update(self):
+        for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def copy_target_update(self):
+        if self.iterations % self.target_update_frequency == 0:
+            self.Q_target.load_state_dict(self.Q.state_dict())
 
 
 class AtariAgent(object):

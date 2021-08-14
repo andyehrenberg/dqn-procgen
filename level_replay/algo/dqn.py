@@ -5,6 +5,7 @@ import math
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.distributions import Categorical
 
 
 def apply_init_(modules):
@@ -265,6 +266,9 @@ class DQN(nn.Module):
                 self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
                 self.fc_z_v = nn.Linear(args.hidden_size, self.action_space)
 
+        apply_init_(self.modules())
+        self.train()
+
     def _forward_c51(self, x, log=False):
         dist = self.dist(x, log)
         q = (dist * self.support).sum(-1)
@@ -401,30 +405,67 @@ class SimpleDQN(nn.Module):
         return k
 
 
-class TwoNetworkDQN(nn.Module):
+class TwinnedDQN(nn.Module):
     def __init__(self, args, action_space):
-        super(TwoNetworkDQN, self).__init__()
+        super(TwinnedDQN, self).__init__()
+        self.q1 = DQN(args, action_space)
+        self.q2 = DQN(args, action_space)
+
+    def forward(self, x):
+        q1 = self.q1(x)
+        q2 = self.q2(x)
+
+        return q1, q2
+
+
+class SAC(nn.Module):
+    def __init__(self, args, action_space):
+        super(SAC, self).__init__()
         self.action_space = action_space
-
-        self.value_features = ImpalaCNN(args.state_dim[0])
-        self.advantage_features = ImpalaCNN(args.state_dim[0])
+        self.features = ImpalaCNN(args.state_dim[0])
         self.conv_output_size = 2048
-        self.value_fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.advantage_fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
-        self.value_fc2 = nn.Linear(args.hidden_size, 1)
-        self.advantage_fc2 = nn.Linear(args.hidden_size, action_space)
+        self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc2 = nn.Linear(args.hidden_size, self.action_space)
+        apply_init_(self.modules())
+        self.train()
 
-    def forward(self, x, log=False):
-        value_x = self.value_features(x)
-        advantage_x = self.advantage_features(x)
-        value = self.value_fc2(F.relu(self.value_fc1(value_x)))
-        advantage = self.advantage_fc2(F.relu(self.advantage_fc2(advantage_x)))
-        value, advantage = (
-            value.view(
-                -1,
-                1,
-            ),
-            advantage.view(-1, self.action_space),
-        )
-        q = value + advantage - advantage.mean(1, keepdim=True)
-        return q
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(-1, self.conv_output_size)
+        action_logits = self.fc2(F.relu(self.fc1(x)))
+        greedy_action = torch.argmax(action_logits, dim=1, keepdim=True)
+        return greedy_action
+
+    def act(self, x):
+        return self.forward(x)
+
+    def sample(self, x):
+        x = self.features(x)
+        x = x.view(-1, self.conv_output_size)
+        action_logits = self.fc2(F.relu(self.fc1(x)))
+        action_probs = F.softmax(action_logits, dim=1)
+        action_dist = Categorical(action_probs)
+        action = action_dist.sample().view(-1, 1)
+
+        # Avoid numerical instability.
+        z = (action_probs == 0.0).float() * 1e-8
+        log_action_probs = torch.log(action_probs + z)
+
+        return action, action_probs, log_action_probs
+
+
+class Conv_Q(nn.Module):
+    def __init__(self, frames, num_actions):
+        super(Conv_Q, self).__init__()
+        self.c1 = nn.Conv2d(frames, 32, kernel_size=8, stride=4)
+        self.c2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.c3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.l1 = nn.Linear(3136, 512)
+        self.l2 = nn.Linear(512, num_actions)
+
+    def forward(self, state):
+        q = F.relu(self.c1(state))
+        q = F.relu(self.c2(q))
+        q = F.relu(self.c3(q))
+        q = F.relu(self.l1(q.reshape(-1, 3136)))
+        return self.l2(q)
