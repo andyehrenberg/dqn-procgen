@@ -31,7 +31,6 @@ class DQNAgent(object):
         self.PER = args.PER and not args.ERE
         self.n_step = args.multi_step
 
-        self.alpha = args.alpha
         self.min_priority = args.min_priority
 
         # Target update rule
@@ -48,6 +47,11 @@ class DQNAgent(object):
 
         # For seed bar chart
         self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
+
+        self.cql = args.cql
+
+        if self.cql:
+            self._alpha = 1.0
 
         if self.Q.c51:
             self.loss = self._loss_c51
@@ -110,6 +114,9 @@ class DQNAgent(object):
 
         loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
         priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+
+        if self.cql:
+            loss += self._conservative_loss(state, action)
 
         return ind, loss, priority
 
@@ -205,6 +212,14 @@ class DQNAgent(object):
         )
 
         return ind, loss, priority
+
+    def _conservative_loss(self, state, action):
+        policy_values = self.Q(state)
+        logsumexp = torch.logsumexp(policy_values, dim=1, keepdim=True)
+
+        data_values = policy_values.gather(1, action)
+
+        return self._alpha * (logsumexp - data_values).mean()
 
     def train_with_online_target(self, replay_buffer, online):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
@@ -321,7 +336,6 @@ class SACAgent(object):
         self.PER = args.PER and not args.ERE
         self.n_step = args.multi_step
 
-        self.alpha = args.alpha
         self.min_priority = args.min_priority
 
         # Target update rule
@@ -461,7 +475,6 @@ class AtariAgent(object):
         self.PER = args.PER
         self.n_step = args.multi_step
 
-        self.alpha = args.alpha
         self.min_priority = args.min_priority
 
         # Target update rule

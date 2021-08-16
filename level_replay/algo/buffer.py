@@ -240,13 +240,34 @@ class RankBuffer(AbstractBuffer):
         return rank_e_id, w
 
 
-class AutoEREBuffer(AbstractBuffer):
+class PLRBuffer(AbstractBuffer):
     def __init__(self, args):
-        super(AutoEREBuffer, self).__init__(args)
-        self.eta_init = 0.995
-        self.epoch_performance_buf = np.zeros(0, dtype=np.float32)
-        self.current_epoch = 0
-        self.max_history_improvement = 1e-5
+        super(PLRBuffer, self).__init__(args)
+        self._seeds = args.seeds
+        self.obs_space = args.state_dim
+        self.action_space = args.num_actions
+        self.num_actors = args.num_processes
+        self.strategy = "value_l1"
+        self.replay_schedule = "fixed"
+        self.score_transform = "power"
+        self.temperature = 1.0
+        self.eps = 0.05
+        self.rho = 0.2
+        self.nu = 0.5
+        self.alpha = 1.0
+        self.staleness_coef = 0
+        self.staleness_transform = "power"
+        self.staleness_temperature = 1.0
+
+        self._init_seed_index(self._seeds)
+
+        self.unseen_seed_weights = np.array([1.0] * len(self._seeds))
+        self.seed_scores = np.array([0.0] * len(self._seeds), dtype=np.float)
+        self.partial_seed_scores = np.zeros((self.num_actors, len(self._seeds)), dtype=np.float)
+        self.partial_seed_steps = np.zeros((self.num_actors, len(self._seeds)), dtype=np.int64)
+        self.seed_staleness = np.array([0.0] * len(self._seeds), dtype=np.float)
+
+        self.next_seed_index = 0
 
     def add(self, state, action, next_state, reward, done, seeds):
         n_transitions = state.shape[0] if len(state.shape) == 4 else 1
@@ -264,130 +285,162 @@ class AutoEREBuffer(AbstractBuffer):
 
         not_done = (1 - done).reshape(-1, 1)
 
-        self.state[self.ptr] = state
-        self.action[self.ptr] = action
-        self.next_state[self.ptr] = next_state
-        self.reward[self.ptr] = reward
-        self.not_done[self.ptr] = not_done
-        self.seeds[self.ptr] = seeds
+        if self.ptr + n_transitions > self.max_size:
+            self.state[self.ptr :] = state[: n_transitions - end]
+            self.state[:end] = state[n_transitions - end :]
+
+            self.action[self.ptr :] = action[: n_transitions - end]
+            self.action[:end] = action[n_transitions - end :]
+
+            self.next_state[self.ptr :] = next_state[: n_transitions - end]
+            self.next_state[:end] = next_state[n_transitions - end :]
+
+            self.reward[self.ptr :] = reward[: n_transitions - end]
+            self.reward[:end] = reward[n_transitions - end :]
+
+            self.not_done[self.ptr :] = not_done[: n_transitions - end]
+            self.not_done[:end] = not_done[n_transitions - end :]
+            self.seeds[self.ptr :] = seeds[: n_transitions - end]
+            self.seeds[:end] = seeds[n_transitions - end :]
+        else:
+            self.state[self.ptr : self.ptr + n_transitions] = state
+            self.action[self.ptr : self.ptr + n_transitions] = action
+            self.next_state[self.ptr : self.ptr + n_transitions] = next_state
+            self.reward[self.ptr : self.ptr + n_transitions] = reward
+            self.not_done[self.ptr : self.ptr + n_transitions] = not_done
+            self.seeds[self.ptr : self.ptr + n_transitions] = seeds
 
         self.ptr = end
         self.size = min(self.size + n_transitions, self.max_size)
 
-    def store_epoch_performance(self, test_score):
-        self.epoch_performance_buf = np.append(self.epoch_performance_buf, np.array([test_score]))
-        self.current_epoch += 1
+    def sample(self):
+        ind = np.random.randint(0, self.size, size=self.batch_size)
+        weights = self._get_weights(ind)
 
-    def get_auto_eta(self, eta_init=0.995, baseline_epoch=100, ave_size=20):
-        if self.current_epoch < baseline_epoch:  # if don't have enough data
-            return self.eta_init
-        # if have enough data already
-        baseline_improvement = (
-            self.epoch_performance_buf[baseline_epoch - ave_size : baseline_epoch].mean()
-            - self.epoch_performance_buf[0:ave_size].mean()
+        return (
+            torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
+            torch.LongTensor(self.action[ind]).to(self.device),
+            torch.FloatTensor(self.next_state[ind]).to(self.device) / 255.0,
+            torch.FloatTensor(self.reward[ind]).to(self.device),
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights / weights.max(),
         )
-        current_performance = self.epoch_performance_buf[
-            self.current_epoch - ave_size : self.current_epoch
-        ].mean()
-        previous_performance = self.epoch_performance_buf[
-            self.current_epoch - 100 : self.current_epoch - 100 + ave_size
-        ].mean()
-        recent_improvement = current_performance - previous_performance
-        interpolation = recent_improvement / baseline_improvement
-        if interpolation < 0:
-            interpolation = 0
-        auto_eta = self.eta_init * interpolation + 1 * (1 - interpolation)
-        return auto_eta
 
-    def get_auto_eta_with_recent_baseline(self, eta_init=0.994, compare_interval=200):
-        half_compare_interval = int(compare_interval / 2)
-        onethird_compare_interval = int(compare_interval / 3)
-        if (
-            self.current_epoch < half_compare_interval + onethird_compare_interval
-        ):  # if don't have enough data
-            return self.eta_init
+    def _get_weights(self, ind):
+        seeds = self.seeds[ind]
+        weights = []
+        for seed in seeds:
+            weight = 1.0 if self.unseen_seed_weights[seed][0] != 0.0 else self.seed_scores[seed][0]
+            weights.append(weight)
 
-        baseline_start = self.current_epoch - compare_interval  #
-        if baseline_start < 0:
-            baseline_start = 0
+        weights = torch.FloatTensor(weights).to(self.device).reshape(-1, 1)
 
-        current_performance = self.epoch_performance_buf[
-            self.current_epoch - onethird_compare_interval : self.current_epoch
-        ].mean()
-        previous_performance_istart = (
-            self.current_epoch - half_compare_interval - int(onethird_compare_interval / 2)
-        )
-        previous_performance_iend = (
-            self.current_epoch - half_compare_interval + int(onethird_compare_interval / 2)
-        )
-        previous_performance = self.epoch_performance_buf[
-            previous_performance_istart:previous_performance_iend
-        ].mean()
-        baseline_performance = self.epoch_performance_buf[
-            baseline_start : baseline_start + onethird_compare_interval
-        ].mean()
+        return weights
 
-        recent_improvement = current_performance - previous_performance
-        older_improvement = previous_performance - baseline_performance
+    def seed_range(self):
+        return (int(min(self._seeds)), int(max(self._seeds)))
 
-        if older_improvement == 0:
-            interpolation = 1
+    def _init_seed_index(self, seeds):
+        self._seeds = np.array(seeds, dtype=np.int64)
+        self.seed2index = {seed: i for i, seed in enumerate(seeds)}
+
+    def update_with_rollouts(self, rollouts):
+        score_function = self._average_value_l1
+
+        self._update_with_rollouts(rollouts, score_function)
+
+    def update_seed_score(self, actor_index, seed_idx, score, num_steps):
+        score = self._partial_update_seed_score(actor_index, seed_idx, score, num_steps, done=True)
+
+        self.unseen_seed_weights[seed_idx] = 0.0  # No longer unseen
+
+        old_score = self.seed_scores[seed_idx]
+        self.seed_scores[seed_idx] = (1 - self.alpha) * old_score + self.alpha * score
+
+    def _partial_update_seed_score(self, actor_index, seed_idx, score, num_steps, done=False):
+        partial_score = self.partial_seed_scores[actor_index][seed_idx]
+        partial_num_steps = self.partial_seed_steps[actor_index][seed_idx]
+
+        running_num_steps = partial_num_steps + num_steps
+        merged_score = partial_score + (score - partial_score) * num_steps / float(running_num_steps)
+
+        if done:
+            self.partial_seed_scores[actor_index][seed_idx] = 0.0  # zero partial score, partial num_steps
+            self.partial_seed_steps[actor_index][seed_idx] = 0
         else:
-            interpolation = recent_improvement / older_improvement
+            self.partial_seed_scores[actor_index][seed_idx] = merged_score
+            self.partial_seed_steps[actor_index][seed_idx] = running_num_steps
 
-        if interpolation < 0:
-            interpolation = 0
-        if interpolation > 1:
-            interpolation = 1
-        auto_eta = self.eta_init * interpolation + 1 * (1 - interpolation)
-        return auto_eta
+        return merged_score
 
-    def get_auto_eta_max_history(self, baseline_epoch=100, ave_size=20):
-        if self.current_epoch < baseline_epoch:  # if don't have enough data
-            return self.eta_init
-        # if have enough data already
-        current_performance = self.epoch_performance_buf[
-            self.current_epoch - ave_size : self.current_epoch
-        ].mean()
-        previous_performance = self.epoch_performance_buf[
-            self.current_epoch - 100 : self.current_epoch - 100 + ave_size
-        ].mean()
-        recent_improvement = current_performance - previous_performance
-        if recent_improvement > self.max_history_improvement:
-            self.max_history_improvement = recent_improvement
+    def _average_value_l1(self, **kwargs):
+        returns = kwargs["returns"]
+        value_preds = kwargs["value_preds"]
 
-        interpolation = recent_improvement / self.max_history_improvement
-        # clip to range (0, 1)
-        interpolation = np.clip(interpolation, a_min=0, a_max=1)
-        auto_eta = self.eta_init * interpolation + 0.999 * (1 - interpolation)
-        return auto_eta
+        advantages = returns - value_preds
 
-    def sample_uniform_batch(self, batch_size=32):
-        idxes = np.random.randint(0, self.size, size=self.batch_size)
+        return advantages.abs().mean().item()
 
-        state = torch.FloatTensor(self.state[idxes]).to(self.device) / 255.0
-        action = torch.LongTensor(self.action[idxes]).to(self.device)
-        next_state = torch.FloatTensor(self.next_state[idxes]).to(self.device) / 255.0
-        reward = torch.FloatTensor(self.reward[idxes]).to(self.device)
-        not_done = torch.FloatTensor(self.not_done[idxes]).to(self.device)
-        seed = torch.LongTensor(self.seeds[idxes]).to(self.device)
+    def _update_with_rollouts(self, rollouts, score_function):
+        level_seeds = rollouts.level_seeds
+        done = ~(rollouts.masks > 0)
+        total_steps, num_actors = rollouts.rewards.shape[:2]
 
-        return state, action, next_state, reward, not_done, seed, idxes, 1.0
+        for actor_index in range(num_actors):
+            done_steps = torch.nonzero(done[:, actor_index], as_tuple=False)[:total_steps, 0]
+            start_t = 0
 
-    def sample_priority_only_batch(self, c_k):
-        recent_data_size = self.batch_size
-        max_index = min(int(c_k), self.size)
-        recent_relative_idxs = -np.random.randint(0, max_index, size=recent_data_size)
-        recent_idxs = (self.ptr - 1 + recent_relative_idxs) % self.size
+            for t in done_steps:
+                if not start_t < total_steps:
+                    break
 
-        state = torch.FloatTensor(self.state[recent_idxs]).to(self.device) / 255.0
-        action = torch.LongTensor(self.action[recent_idxs]).to(self.device)
-        next_state = torch.FloatTensor(self.next_state[recent_idxs]).to(self.device) / 255.0
-        reward = torch.FloatTensor(self.reward[recent_idxs]).to(self.device)
-        not_done = torch.FloatTensor(self.not_done[recent_idxs]).to(self.device)
-        seed = torch.LongTensor(self.seeds[recent_idxs]).to(self.device)
+                if t == 0:  # if t is 0, then this done step caused a full update of previous seed last cycle
+                    continue
 
-        return state, action, next_state, reward, not_done, seed, recent_idxs, 1.0
+                seed_t = level_seeds[start_t, actor_index].item()
+                seed_idx_t = self.seed2index[seed_t]
+
+                score_function_kwargs = {}
+
+                score_function_kwargs["returns"] = rollouts.returns[start_t:t, actor_index]
+                score_function_kwargs["rewards"] = rollouts.rewards[start_t:t, actor_index]
+                score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:t, actor_index]
+
+                score = score_function(**score_function_kwargs)
+                num_steps = len(rollouts.rewards[start_t:t, actor_index])
+                self.update_seed_score(actor_index, seed_idx_t, score, num_steps)
+
+                start_t = t.item()
+
+            if start_t < total_steps:
+                seed_t = level_seeds[start_t, actor_index].item()
+                seed_idx_t = self.seed2index[seed_t]
+
+                score_function_kwargs = {}
+
+                score_function_kwargs["returns"] = rollouts.returns[start_t:, actor_index]
+                score_function_kwargs["rewards"] = rollouts.rewards[start_t:, actor_index]
+                score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:, actor_index]
+
+                score = score_function(**score_function_kwargs)
+                num_steps = len(rollouts.rewards[start_t:, actor_index])
+                self._partial_update_seed_score(actor_index, seed_idx_t, score, num_steps)
+
+    def after_update(self):
+        # Reset partial updates, since weights have changed, and thus logits are now stale
+        for actor_index in range(self.partial_seed_scores.shape[0]):
+            for seed_idx in range(self.partial_seed_scores.shape[1]):
+                if self.partial_seed_scores[actor_index][seed_idx] != 0:
+                    self.update_seed_score(actor_index, seed_idx, 0, 0)
+        self.partial_seed_scores.fill(0)
+        self.partial_seed_steps.fill(0)
+
+    def _update_staleness(self, selected_idx):
+        if self.staleness_coef > 0:
+            self.seed_staleness = self.seed_staleness + 1
+            self.seed_staleness[selected_idx] = 0
 
 
 class AtariBuffer(AbstractBuffer):
@@ -475,10 +528,6 @@ class RolloutStorage(object):
             self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
 
-        # Masks that indicate whether it's a true terminal state
-        # or time limit end state
-        # self.bad_masks = torch.ones(num_steps + 1, num_processes, 1)
-
         self.level_seeds = torch.zeros(num_steps, num_processes, 1, dtype=torch.int)
 
         self.num_steps = num_steps
@@ -491,7 +540,6 @@ class RolloutStorage(object):
         self.returns = self.returns.to(device)
         self.actions = self.actions.to(device)
         self.masks = self.masks.to(device)
-        # self.bad_masks = self.bad_masks.to(device)
         self.level_seeds = self.level_seeds.to(device)
 
     def insert(
@@ -500,7 +548,7 @@ class RolloutStorage(object):
         actions,
         value_preds,
         rewards,
-        masks,  # bad_masks,
+        masks,
         level_seeds=None,
     ):
         if len(rewards.shape) == 3:
@@ -510,7 +558,6 @@ class RolloutStorage(object):
         self.value_preds[self.step].copy_(value_preds)
         self.rewards[self.step].copy_(rewards)
         self.masks[self.step + 1].copy_(masks)
-        # self.bad_masks[self.step + 1].copy_(bad_masks)
 
         if level_seeds is not None:
             self.level_seeds[self.step].copy_(level_seeds)
@@ -533,28 +580,6 @@ class RolloutStorage(object):
             )
             gae = delta + gamma * gae_lambda * self.masks[step + 1] * gae
             self.returns[step] = gae + self.value_preds[step]
-
-
-# class PLRBuffer:
-# def __init__(self, state_dim, batch_size, buffer_size, device, prioritized, seeds, num_updates):
-# self.buffers = {
-#    i: Buffer(state_dim, batch_size, buffer_size, device, prioritized, num_updates) for i in seeds
-# }
-
-# def add(self, state, action, next_state, reward, done, seeds):
-# n_transitions = state.shape[0]
-# end = (self.ptr + n_transitions) % self.max_size
-# for i in seeds.unique():
-# s = state[torch.where(seeds == i)[0]]
-# a = action[torch.where(seeds == i)[0]]
-# n_s = next_state[torch.where(seeds == i)[0]]
-# r = reward[torch.where(seeds == i)[0]]
-# d = done[torch.where(seeds == i)[0]]
-# seed = seeds[torch.where(seeds == i)[0]]
-# self.buffers[i].add(s, a, n_s, r, d, seed)
-
-# def sample(self, seed):
-# self.buffers[seed].sample()
 
 
 class SumTree(object):
@@ -607,7 +632,7 @@ class SumTree(object):
 
 def make_buffer(args, atari=False):
     if atari:
-        return AbstractBuffer(args)
+        return AtariBuffer(args)
     if args.rank_based_PER:
         return RankBuffer(args)
     return Buffer(args)

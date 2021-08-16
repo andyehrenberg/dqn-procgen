@@ -8,8 +8,8 @@ import torch
 import wandb
 
 from level_replay import utils
-from level_replay.algo.buffer import make_buffer, RolloutStorage
-from level_replay.algo.policy import DDQN
+from level_replay.algo.buffer import PLRBuffer, RolloutStorage
+from level_replay.algo.policy import DQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward
@@ -44,7 +44,7 @@ def train(args, seeds):
     num_levels = 1
     level_sampler_args = dict(
         num_actors=args.num_processes,
-        strategy=args.level_replay_strategy,
+        strategy="random",
         replay_schedule=args.level_replay_schedule,
         score_transform=args.level_replay_score_transform,
         temperature=args.level_replay_temperature,
@@ -70,12 +70,12 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    replay_buffer = make_buffer(args)
+    replay_buffer = PLRBuffer(args)
     rollouts = RolloutStorage(
         args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
     )
 
-    agent = DDQN(args)
+    agent = DQNAgent(args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -178,11 +178,8 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
-            for _ in range(args.num_updates):
-                loss, grad_magnitude = agent.train(replay_buffer)
-                wandb.log(
-                    {"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes
-                )
+            loss, grad_magnitude = agent.train(replay_buffer)
+            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
 
         if (rollouts.step + 1) == rollouts.num_steps:
             obs_id = rollouts.obs[-1]
@@ -190,15 +187,13 @@ def train(args, seeds):
 
             rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
 
-            if level_sampler:
-                level_sampler.update_with_rollouts(rollouts)
+            replay_buffer.update_with_rollouts(rollouts)
 
             rollouts.after_update()
 
-            if level_sampler:
-                level_sampler.after_update()
+            replay_buffer.after_update()
 
-        if t == num_steps - 1:
+        if (t + 1) % int((num_steps - 1) / 10) == 0:
             count_data = [
                 [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
             ]
@@ -207,8 +202,19 @@ def train(args, seeds):
             table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
             wandb.log(
                 {
-                    "Seed Sampling Distribution at End of Training": wandb.plot.bar(
+                    f"Seed Sampling Distribution at time {t}": wandb.plot.bar(
                         table, "Seed", "Weight", title="Sampling distribution of levels"
+                    )
+                }
+            )
+            count_data = [[seed, weight] for (seed, weight) in enumerate(replay_buffer.seed_scores)]
+            total_weight = sum([i[1] for i in count_data])
+            count_data = [[i[0], i[1] / total_weight] for i in count_data]
+            table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
+            wandb.log(
+                {
+                    "Normalized PLR Seed Weights": wandb.plot.bar(
+                        table, "Seed", "Weight", title="Normalized PLR Seed Weights"
                     )
                 }
             )
