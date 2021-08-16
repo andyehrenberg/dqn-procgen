@@ -1,11 +1,9 @@
 import copy
 
 import torch
-from torch import nn
 import torch.nn.functional as F
 from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC, TwinnedDQN
 from torch.nn.utils import clip_grad_norm_
-import math
 
 import numpy as np
 
@@ -54,11 +52,6 @@ class DQNAgent(object):
 
         if self.cql:
             self._alpha = 1.0
-            data = torch.full((1, 1), math.log(self._alpha), dtype=torch.float32)
-            self._log_alpha = Parameter(data)
-            self._alpha_optimizer = getattr(torch.optim, args.optimizer)(
-                self._log_alpha, **args.optimizer_parameters
-            )
 
         if self.Q.c51:
             self.loss = self._loss_c51
@@ -227,13 +220,6 @@ class DQNAgent(object):
         data_values = policy_values.gather(1, action)
 
         return self._alpha * (logsumexp - data_values).mean()
-
-    def update_alpha(self, state, action):
-        self._alpha_optimizer.zero_grad()
-        loss = -self._conservative_loss(state, action)
-        loss.backward()
-        self._alpha_optimizer.step()
-        self._alpha = self._log_alpha.exp().cpu().detach().numpy()[0][0]
 
     def train_with_online_target(self, replay_buffer, online):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
@@ -562,19 +548,3 @@ class AtariAgent(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
-
-
-class Parameter(nn.Module):
-    def __init__(self, data: torch.Tensor):
-        super(Parameter, self).__init__()
-        self._parameter = nn.Parameter(data)
-
-    def forward(self) -> torch.Tensor:
-        return self._parameter
-
-    def __call__(self) -> torch.Tensor:
-        return super().__call__()
-
-    @property
-    def data(self) -> torch.Tensor:
-        return self._parameter.data
