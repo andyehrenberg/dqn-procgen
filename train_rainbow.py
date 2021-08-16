@@ -65,9 +65,9 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    replay_buffer = make_buffer(args)
+    replay_buffer = make_buffer(args, envs)
 
-    agent = DQNAgent(args)
+    agent = DQNAgent(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:

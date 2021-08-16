@@ -9,17 +9,17 @@ import numpy as np
 
 
 class DQNAgent(object):
-    def __init__(self, args):
+    def __init__(self, args, env):
         self.device = args.device
-        self.action_space = args.num_actions
+        self.action_space = env.action_space.n
         self.batch_size = args.batch_size
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
         if args.simple_dqn:
-            self.Q = SimpleDQN(args, self.action_space).to(self.device)
+            self.Q = SimpleDQN(args, env).to(self.device)
         else:
-            self.Q = DQN(args, self.action_space).to(self.device)
+            self.Q = DQN(args, env).to(self.device)
 
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer = getattr(torch.optim, args.optimizer)(
@@ -305,15 +305,15 @@ class DQNAgent(object):
 
 
 class SACAgent(object):
-    def __init__(self, args):
+    def __init__(self, args, env):
         self.device = args.device
-        self.action_space = args.num_actions
+        self.action_space = env.action_space.n
         self.batch_size = args.batch_size
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
-        self.Q = TwinnedDQN(args, self.action_space).to(self.device)
-        self.policy = SAC(args, self.action_space).to(self.device)
+        self.Q = TwinnedDQN(args, env).to(self.device)
+        self.policy = SAC(args, env).to(self.device)
         self.policy_optimizer = getattr(torch.optim, args.optimizer)(
             self.policy.parameters(), **args.optimizer_parameters
         )

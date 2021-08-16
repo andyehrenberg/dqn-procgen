@@ -7,7 +7,7 @@ from level_replay.algo.binary_heap import BinaryHeap
 
 
 class AbstractBuffer:
-    def __init__(self, args):
+    def __init__(self, args, env):
         self.batch_size = args.batch_size
         self.max_size = int(args.memory_capacity)
         self.device = args.device
@@ -15,7 +15,7 @@ class AbstractBuffer:
         self.ptr = 0
         self.size = 0
 
-        self.state = np.zeros((self.max_size, *args.state_dim), dtype=np.uint8)
+        self.state = np.zeros((self.max_size, *env.observation_space.shape), dtype=np.uint8)
         self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
         self.next_state = np.array(self.state)
         self.reward = np.zeros((self.max_size, 1))
@@ -33,8 +33,8 @@ class AbstractBuffer:
 
 
 class Buffer(AbstractBuffer):
-    def __init__(self, args):
-        super(Buffer, self).__init__(args)
+    def __init__(self, args, env):
+        super(Buffer, self).__init__(args, env)
         self.ere = args.ERE
         self.prioritized = args.PER and not self.ere
 
@@ -132,8 +132,8 @@ class Buffer(AbstractBuffer):
 
 
 class RankBuffer(AbstractBuffer):
-    def __init__(self, args):
-        super(RankBuffer, self).__init__(args)
+    def __init__(self, args, env):
+        super(RankBuffer, self).__init__(args, env)
 
         self.prioritized = args.PER
         num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
@@ -241,11 +241,11 @@ class RankBuffer(AbstractBuffer):
 
 
 class PLRBuffer(AbstractBuffer):
-    def __init__(self, args):
-        super(PLRBuffer, self).__init__(args)
+    def __init__(self, args, env):
+        super(PLRBuffer, self).__init__(args, env)
         self._seeds = args.seeds
-        self.obs_space = args.state_dim
-        self.action_space = args.num_actions
+        self.obs_space = env.observation_space.shape
+        self.action_space = env.action_space.n
         self.num_actors = args.num_processes
         self.strategy = "value_l1"
         self.replay_schedule = "fixed"
@@ -444,8 +444,8 @@ class PLRBuffer(AbstractBuffer):
 
 
 class AtariBuffer(AbstractBuffer):
-    def __init__(self, args):
-        super(AtariBuffer, self).__init__(args)
+    def __init__(self, args, env):
+        super(AtariBuffer, self).__init__(args, env)
         self.prioritized = args.PER
         num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
         if self.prioritized:
@@ -630,9 +630,9 @@ class SumTree(object):
             node_index //= 2
 
 
-def make_buffer(args, atari=False):
+def make_buffer(args, env, atari=False):
     if atari:
-        return AtariBuffer(args)
+        return AtariBuffer(args, env)
     if args.rank_based_PER:
-        return RankBuffer(args)
-    return Buffer(args)
+        return RankBuffer(args, env)
+    return Buffer(args, env)

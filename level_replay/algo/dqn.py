@@ -145,6 +145,28 @@ class ImpalaCNN(nn.Module):
         return x
 
 
+class MiniGridCNN(nn.Module):
+    def __init__(self, args, env):
+        super(MiniGridCNN, self).__init__()
+        final_channels = 64
+
+        self.image_conv = nn.Sequential(
+            nn.Conv2d(3, 16, (2, 2)),
+            nn.ReLU(),
+            nn.MaxPool2d((2, 2)),
+            nn.Conv2d(16, 32, (2, 2)),
+            nn.ReLU(),
+            nn.Conv2d(32, final_channels, (2, 2)),
+            nn.ReLU(),
+        )
+        n = env.observation_space.shape[-2]
+        m = env.observation_space.shape[-1]
+        self.image_embedding_size = ((n - 1) // 2 - 2) * ((m - 1) // 2 - 2) * final_channels
+
+    def forward(self, x):
+        return self.image_conv(x)
+
+
 # Factorised NoisyLinear layer with bias
 class NoisyLinear(nn.Module):
     def __init__(self, in_features, out_features, std_init=0.5):
@@ -190,9 +212,9 @@ class NoisyLinear(nn.Module):
 
 
 class DQN(nn.Module):
-    def __init__(self, args, action_space):
+    def __init__(self, args, env):
         super(DQN, self).__init__()
-        self.action_space = action_space
+        self.action_space = env.action_space.n
         self.dueling = args.dueling
         self.c51 = args.c51
         self.qrdqn = args.qrdqn
@@ -205,7 +227,7 @@ class DQN(nn.Module):
             self.delta_z = float(self.V_max - self.V_min) / (self.atoms - 1)
         if self.qrdqn:
             self.atoms = 200
-        self.make_network(args)
+        self.make_network(args, env)
         if not self.qrdqn:
             self.forward = (
                 self._forward_c51
@@ -219,13 +241,17 @@ class DQN(nn.Module):
             self.tau_hats = ((taus[1:] + taus[:-1]) / 2.0).view(1, self.atoms)
             self.c51 = False
 
-    def make_network(self, args):
-        self.features = ImpalaCNN(args.state_dim[0])
-        if args.state_dim != (3, 64, 64):
-            example_state = torch.randn((1,) + args.state_dim)
-            self.conv_output_size = self.features(example_state).shape[1]
+    def make_network(self, args, env):
+        if args.env_name.startswith("MiniGrid"):
+            self.features = MiniGridCNN(args, env)
+            self.conv_output_size = self.features.image_embedding_size
         else:
-            self.conv_output_size = 2048
+            self.features = ImpalaCNN(env.observation_space.shape[0])
+            if env.observation_space.shape != (3, 64, 64):
+                example_state = torch.randn((1,) + env.observation_space.shape)
+                self.conv_output_size = self.features(example_state).shape[1]
+            else:
+                self.conv_output_size = 2048
 
         if self.noisy_layers:
             if self.dueling and (self.c51 or self.qrdqn):
@@ -352,9 +378,9 @@ class DQN(nn.Module):
 
 
 class SimpleDQN(nn.Module):
-    def __init__(self, args, action_space):
+    def __init__(self, args, env):
         super(SimpleDQN, self).__init__()
-        self.action_space = action_space
+        self.action_space = env.action_space.n
         self.conv1 = Conv2d_tf(3, 16, kernel_size=7, stride=1, padding="SAME")
         self.pool1 = L2Pool(kernel_size=2, stride=2)
         self.conv2a = Conv2d_tf(16, 32, kernel_size=5, stride=1, padding="SAME")
@@ -370,7 +396,7 @@ class SimpleDQN(nn.Module):
         self.fc_h2_v = nn.Linear(256, 512)
         self.fc_h2_a = nn.Linear(256, 512)
         self.fc_z_v = nn.Linear(512, 1)
-        self.fc_z_a = nn.Linear(512, action_space)
+        self.fc_z_a = nn.Linear(512, self.action_space)
 
     def forward(self, x):
         x = self.pool1(F.relu(self.conv1(x)))
@@ -406,10 +432,10 @@ class SimpleDQN(nn.Module):
 
 
 class TwinnedDQN(nn.Module):
-    def __init__(self, args, action_space):
+    def __init__(self, args, env):
         super(TwinnedDQN, self).__init__()
-        self.q1 = DQN(args, action_space)
-        self.q2 = DQN(args, action_space)
+        self.q1 = DQN(args, env)
+        self.q2 = DQN(args, env)
 
     def forward(self, x):
         q1 = self.q1(x)
@@ -419,10 +445,10 @@ class TwinnedDQN(nn.Module):
 
 
 class SAC(nn.Module):
-    def __init__(self, args, action_space):
+    def __init__(self, args, env):
         super(SAC, self).__init__()
-        self.action_space = action_space
-        self.features = ImpalaCNN(args.state_dim[0])
+        self.action_space = env.action_space.n
+        self.features = ImpalaCNN(env.observation_space.shape[0])
         self.conv_output_size = 2048
         self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
         self.fc2 = nn.Linear(args.hidden_size, self.action_space)
