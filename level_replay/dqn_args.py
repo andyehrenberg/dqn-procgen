@@ -20,8 +20,6 @@ parser.add_argument("--qrdqn", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--cql", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--simple_dqn", type=lambda x: bool(strtobool(x)), default=False, help="simple dqn arch")
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
-parser.add_argument("--num_actions", type=int, default=15, help="Action space dimension")
-parser.add_argument("--state_dim", type=tuple, default=(3, 64, 64))  # type: ignore
 parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
 parser.add_argument("--adam_eps", type=float, default=1.5e-4)
 parser.add_argument("--optimizer", default="Adam", help="Optimizer to use")

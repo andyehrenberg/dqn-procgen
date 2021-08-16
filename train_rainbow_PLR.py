@@ -70,12 +70,12 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    replay_buffer = PLRBuffer(args)
+    replay_buffer = PLRBuffer(args, envs)
     rollouts = RolloutStorage(
         args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
     )
 
-    agent = DQNAgent(args)
+    agent = DQNAgent(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
