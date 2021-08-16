@@ -7,7 +7,7 @@ from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
 
 from level_replay.algo.dqn import ImpalaCNN
-from level_replay.algo.policy import DDQN
+from level_replay.algo.policy import DQNAgent
 
 
 def initialize_weights_xavier(m, gain=1.0):
@@ -30,9 +30,9 @@ def update(optimizer, loss, model, norm_clip=None):
 
 
 class ErrorModel(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, env):
         super().__init__()
-        self.features = ImpalaCNN(args.state_dim[0])
+        self.features = ImpalaCNN(env.observation_space.shape[0])
         self.conv_output_size = 2048
         self.fc1 = nn.Linear(self.conv_output_size, args.hidden_size)
         self.fc2 = nn.Linear(args.hidden_size, args.hidden_size)
@@ -49,12 +49,12 @@ class ErrorModel(nn.Module):
         return error
 
 
-class DisCor(DDQN):
-    def __init__(self, args):
-        super().__init__(args)
+class DisCor(DQNAgent):
+    def __init__(self, args, env):
+        super().__init__(args, env)
         args.error_lr = 2.5e-4
 
-        self.online_error = ErrorModel(args).to(self.device)
+        self.online_error = ErrorModel(args, env).to(self.device)
         self.target_error = copy.deepcopy(self.online_error)
         self.target_error.load_state_dict(self.online_error.state_dict())
 

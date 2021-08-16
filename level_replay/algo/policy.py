@@ -41,7 +41,7 @@ class DQNAgent(object):
         self.tau = args.tau
 
         # Evaluation hyper-parameters
-        self.state_shape = (-1,) + args.state_dim
+        self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
         self.num_actions = args.num_actions
 
@@ -346,7 +346,7 @@ class SACAgent(object):
         self.tau = args.tau
 
         # Evaluation hyper-parameters
-        self.state_shape = (-1,) + args.state_dim
+        self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
         self.num_actions = args.num_actions
 
@@ -458,8 +458,7 @@ class SACAgent(object):
 
 
 class AtariAgent(object):
-    # Doesn't use IMPALA features
-    def __init__(self, args):
+    def __init__(self, args, env):
         self.device = args.device
         self.action_space = args.num_actions
         self.batch_size = args.batch_size
@@ -485,7 +484,7 @@ class AtariAgent(object):
         self.tau = args.tau
 
         # Evaluation hyper-parameters
-        self.state_shape = (-1,) + args.state_dim
+        self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
         self.num_actions = args.num_actions
 

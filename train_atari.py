@@ -47,8 +47,8 @@ def train(args):
 
     env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
-    args.num_actions = env.action_space.n
-    agent = AtariAgent(args)
+    env.action_space.n
+    agent = AtariAgent(args, env)
 
     num_updates = (args.T_max - args.start_timesteps) // args.train_freq
 
