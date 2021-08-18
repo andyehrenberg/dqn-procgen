@@ -40,7 +40,15 @@ def train(args, seeds):
         tags=["sac", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
-    wandb.run.name = f"SAC-{args.env_name}-{args.num_train_seeds}-levels"
+    wandb.run.name = (
+        f"SAC-{args.env_name}-{args.num_train_seeds}levels"
+        + f"{'-PER' if args.PER else ''}"
+        + f"{'-dueling' if args.dueling else ''}"
+        + f"{'-CQL' if args.cql else ''}"
+        + f"{'-qrdqn' if args.qrdqn else ''}"
+        + f"{'-c51' if args.c51 else ''}"
+        + f"{'-noisylayers' if args.noisy_layers else ''}"
+    )
     wandb.run.save()
 
     num_levels = 1
@@ -346,6 +354,6 @@ if __name__ == "__main__":
     if args.seed_path:
         train_seeds = load_seeds(args.seed_path)
     else:
-        train_seeds = generate_seeds(args.num_train_seeds)
+        train_seeds = generate_seeds(args.num_train_seeds, args.base_seed)
 
     train(args, train_seeds)

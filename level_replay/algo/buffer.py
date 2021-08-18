@@ -11,6 +11,7 @@ class AbstractBuffer:
         self.batch_size = args.batch_size
         self.max_size = int(args.memory_capacity)
         self.device = args.device
+        self.all_seeds = args.seeds
 
         self.ptr = 0
         self.size = 0
@@ -129,6 +130,23 @@ class Buffer(AbstractBuffer):
         priority = np.power(priority, self.alpha)
         self.max_priority = max(priority.max(), self.max_priority)
         self.tree.batch_set(ind, priority)
+
+    def weights_per_seed(self):
+        if self.prioritized:
+            seed2weight = {}
+            max_weight = np.max(self.tree.nodes[-1][: self.size] ** -self.beta)
+            for seed in self.all_seeds:
+                idx = np.where(self.seeds[: self.size] == seed)[0]
+                if len(idx) > 0:
+                    avg_level_weight = np.mean(self.tree.nodes[-1][idx] ** -self.beta)
+                    seed2weight[seed] = avg_level_weight / max_weight
+                else:
+                    seed2weight[seed] = 0.0
+            m = max(seed2weight.values())
+            seed2weight = {seed: seed2weight[seed] / m for seed in self.all_seeds}
+            return seed2weight
+        else:
+            return {seed: 1.0 for seed in self.all_seeds}
 
 
 class RankBuffer(AbstractBuffer):

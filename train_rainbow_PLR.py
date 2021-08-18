@@ -34,12 +34,22 @@ def train(args, seeds):
 
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
-        project="off-policy-procgen",
-        entity="ucl-dark",
+        project=args.wandb_project,
+        entity="andyehrenberg",
         config=vars(args),
         tags=["ddqn", "procgen", "PLR"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
+    wandb.run.name = (
+        f"dqn-{args.env_name}-{args.num_train_seeds}levels"
+        + f"{'-PER' if args.PER else ''}"
+        + f"{'-dueling' if args.dueling else ''}"
+        + f"{'-CQL' if args.cql else ''}"
+        + f"{'-qrdqn' if args.qrdqn else ''}"
+        + f"{'-c51' if args.c51 else ''}"
+        + f"{'-noisylayers' if args.noisy_layers else ''}"
+    )
+    wandb.run.save()
 
     num_levels = 1
     level_sampler_args = dict(
@@ -389,6 +399,6 @@ if __name__ == "__main__":
     if args.seed_path:
         train_seeds = load_seeds(args.seed_path)
     else:
-        train_seeds = generate_seeds(args.num_train_seeds)
+        train_seeds = generate_seeds(args.num_train_seeds, args.base_seed)
 
     train(args, train_seeds)
