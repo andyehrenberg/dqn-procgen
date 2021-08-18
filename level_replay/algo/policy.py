@@ -43,7 +43,6 @@ class DQNAgent(object):
         # Evaluation hyper-parameters
         self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
-        self.num_actions = args.num_actions
 
         # For seed bar chart
         self.track_seed_weights = args.track_seed_weights
@@ -343,7 +342,6 @@ class SACAgent(object):
         # Evaluation hyper-parameters
         self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
-        self.num_actions = args.num_actions
 
         # For seed bar chart
         self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
@@ -481,7 +479,6 @@ class AtariAgent(object):
         # Evaluation hyper-parameters
         self.state_shape = (-1,) + env.observation_space.shape
         self.eval_eps = args.eval_eps
-        self.num_actions = args.num_actions
 
         # Number of training iterations
         self.iterations = 0
