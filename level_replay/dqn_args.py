@@ -68,6 +68,7 @@ parser.add_argument("--ERE", type=lambda x: bool(strtobool(x)), default=False, h
 parser.add_argument("--num_processes", type=int, default=64)
 parser.add_argument("--env_name", default="starpilot")
 parser.add_argument("--distribution_mode", default="easy")
+parser.add_argument("--base_seed", type=int, default=0)
 parser.add_argument("--paint_vel_info", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--use_sequential_levels", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--start_level", type=int, default=0)
@@ -105,6 +106,12 @@ parser.add_argument("--value_loss_coef", type=float, default=0.5)
 parser.add_argument("--weight_log_interval", type=int, default=1)
 
 # Logging
+parser.add_argument(
+    "--track_seed_weights",
+    type=lambda x: bool(strtobool(x)),
+    default=False,
+    help="Whether to track seed weights when doing experience replay",
+)
 parser.add_argument(
     "--wandb",
     type=lambda x: bool(strtobool(x)),

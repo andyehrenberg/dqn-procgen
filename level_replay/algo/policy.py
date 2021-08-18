@@ -46,7 +46,11 @@ class DQNAgent(object):
         self.num_actions = args.num_actions
 
         # For seed bar chart
-        self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
+        self.track_seed_weights = args.track_seed_weights
+        if self.track_seed_weights:
+            self.seed_weights = {
+                i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)
+            }
 
         self.cql = args.cql
 
@@ -97,12 +101,7 @@ class DQNAgent(object):
     def _loss(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
-        for idx, seed in enumerate(seeds):
-            s = seed.cpu().numpy()[0]
-            if self.PER:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-            else:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        self.update_seed_weights(seeds, weights)
 
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
@@ -123,12 +122,7 @@ class DQNAgent(object):
     def _loss_c51(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
-        for idx, seed in enumerate(seeds):
-            s = seed.cpu().numpy()[0]
-            if self.PER:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-            else:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        self.update_seed_weights(seeds, weights)
 
         log_prob = self.Q.dist(state, log=True)
         log_prob_a = log_prob[range(self.batch_size), action]
@@ -174,12 +168,7 @@ class DQNAgent(object):
     def _loss_qrdqn(self, replay_buffer):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
-        for idx, seed in enumerate(seeds):
-            s = seed.cpu().numpy()[0]
-            if self.PER:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-            else:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        self.update_seed_weights(seeds, weights)
 
         quantiles = self.Q.quantiles(state)
         action_index = action[..., None].expand(self.batch_size, self.Q.atoms, 1)
@@ -221,15 +210,21 @@ class DQNAgent(object):
 
         return self._alpha * (logsumexp - data_values).mean()
 
+    def update_seed_weights(self, seeds, weights):
+        if self.track_seed_weights:
+            for idx, seed in enumerate(seeds):
+                s = seed.cpu().numpy()[0]
+                if len(weights) > 1:
+                    self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+                else:
+                    self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        else:
+            pass
+
     def train_with_online_target(self, replay_buffer, online):
         state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
 
-        for idx, seed in enumerate(seeds):
-            s = seed.cpu().numpy()[0]
-            if self.PER:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-            else:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        self.update_seed_weights(seeds, weights)
 
         with torch.no_grad():
             target_Q = reward + not_done * (self.gamma ** self.n_step) * online.get_value(next_state, 0, 0)

@@ -40,7 +40,15 @@ def train(args, seeds):
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
-    wandb.run.name = f"dqn-{args.env_name}-{args.num_train_seeds}-levels"
+    wandb.run.name = (
+        f"dqn-{args.env_name}-{args.num_train_seeds}levels"
+        + f"{'-PER' if args.PER else ''}"
+        + f"{'-dueling' if args.dueling else ''}"
+        + f"{'-CQL' if args.cql else ''}"
+        + f"{'-qrdqn' if args.qrdqn else ''}"
+        + f"{'-c51' if args.c51 else ''}"
+        + f"{'-noisylayers' if args.noisy_layers else ''}"
+    )
     wandb.run.save()
 
     num_levels = 1
@@ -134,17 +142,28 @@ def train(args, seeds):
                 n_state = state_deque[i][0]
                 n_action = action_deque[i][0]
                 replay_buffer.add(
-                    n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                    n_state,
+                    n_action,
+                    next_state[i],
+                    n_reward,
+                    np.uint8(done[i]),
+                    level_seeds[i],
                 )
                 if done[i]:
                     for j in range(1, args.multi_step):
                         n_reward = multi_step_reward(
-                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
+                            [reward_deque[i][k] for k in range(j, args.multi_step)],
+                            args.gamma,
                         )
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
-                            n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                            n_state,
+                            n_action,
+                            next_state[i],
+                            n_reward,
+                            np.uint8(done[i]),
+                            level_seeds[i],
                         )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
@@ -162,7 +181,13 @@ def train(args, seeds):
                 action_deque[i].clear()
                 if args.log_per_seed_stats:
                     plot_level_returns(
-                        level_seeds, returns, estimates, gaps, episode_reward, i, step=t * args.num_processes
+                        level_seeds,
+                        returns,
+                        estimates,
+                        gaps,
+                        episode_reward,
+                        i,
+                        step=t * args.num_processes,
                     )
 
         state = next_state
@@ -172,34 +197,60 @@ def train(args, seeds):
             if agent.Q.noisy_layers:
                 agent.Q.reset_noise()
             loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
+            wandb.log(
+                {"Value Loss": loss, "Gradient magnitude": grad_magnitude},
+                step=t * args.num_processes,
+            )
 
         if t % 500 == 0:
             effective_rank = agent.Q.effective_rank()
             wandb.log({"Effective Rank of DQN": effective_rank}, step=t * args.num_processes)
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
-            count_data = [
-                [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
-            ]
-            total_weight = sum(agent.seed_weights.values())
-            count_data = [[i[0], i[1] / total_weight] for i in count_data]
-            table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
-            wandb.log(
-                {
-                    f"Seed Sampling Distribution at time {t}": wandb.plot.bar(
-                        table, "Seed", "Weight", title="Sampling distribution of levels"
-                    )
-                }
-            )
-            correlation1 = np.corrcoef(gaps, list(agent.seed_weights.values()))[0][1]
-            correlation2 = np.corrcoef(returns, list(agent.seed_weights.values()))[0][1]
-            wandb.log(
-                {
-                    "Correlation between value error and number of samples": correlation1,
-                    "Correlation between empirical return and number of samples": correlation2,
-                }
-            )
+            if args.track_seed_weights and not args.PER:
+                count_data = [
+                    [seed, count]
+                    for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
+                ]
+                total_weight = sum(agent.seed_weights.values())
+                count_data = [[i[0], i[1] / total_weight] for i in count_data]
+                table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
+                wandb.log(
+                    {
+                        f"Seed Sampling Distribution at time {t}": wandb.plot.bar(
+                            table, "Seed", "Weight", title="Sampling distribution of levels"
+                        )
+                    }
+                )
+                correlation1 = np.corrcoef(gaps, list(agent.seed_weights.values()))[0][1]
+                correlation2 = np.corrcoef(returns, list(agent.seed_weights.values()))[0][1]
+                wandb.log(
+                    {
+                        "Correlation between value error and number of samples": correlation1,
+                        "Correlation between empirical return and number of samples": correlation2,
+                    }
+                )
+            else:
+                seed2weight = replay_buffer.weights_per_seed()
+                weight_data = [
+                    [seed, weight] for (seed, weight) in zip(seed2weight.keys(), seed2weight.values())
+                ]
+                table = wandb.Table(data=weight_data, columns=["Level", "Weight"])
+                wandb.log(
+                    {
+                        f"Average weight for each level at time {t}": wandb.plot.bar(
+                            table, "Level", "Weight", title="Avg weight for each level"
+                        )
+                    }
+                )
+                correlation1 = np.corrcoef(gaps, list(agent.seed_weights.values()))[0][1]
+                correlation2 = np.corrcoef(returns, list(agent.seed_weights.values()))[0][1]
+                wandb.log(
+                    {
+                        "Correlation between per level value error and weights": correlation1,
+                        "Correlation between per level empirical return and weights": correlation2,
+                    }
+                )
 
         if t >= args.start_timesteps and t % args.eval_freq == 0:
             mean_test_rewards = np.mean(eval_policy(args, agent, args.num_test_seeds))
@@ -355,7 +406,10 @@ def multi_step_reward(rewards, gamma):
 
 def new_episode(value, estimates, level_seed, i, step):
     estimates[level_seed] = value[i].item()
-    wandb.log({f"Start State Value Estimate for Level {level_seed}": value[i].item()}, step=step)
+    wandb.log(
+        {f"Start State Value Estimate for Level {level_seed}": value[i].item()},
+        step=step,
+    )
 
 
 def plot_level_returns(level_seeds, returns, estimates, gaps, episode_reward, i, step):
@@ -377,6 +431,6 @@ if __name__ == "__main__":
     if args.seed_path:
         train_seeds = load_seeds(args.seed_path)
     else:
-        train_seeds = generate_seeds(args.num_train_seeds)
+        train_seeds = generate_seeds(args.num_train_seeds, args.base_seed)
 
     train(args, train_seeds)
