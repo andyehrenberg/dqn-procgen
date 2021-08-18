@@ -246,8 +246,8 @@ def train(args, seeds):
                         )
                     }
                 )
-                correlation1 = np.corrcoef(gaps, list(agent.seed_weights.values()))[0][1]
-                correlation2 = np.corrcoef(returns, list(agent.seed_weights.values()))[0][1]
+                correlation1 = np.corrcoef(gaps, list(seed2weight.values()))[0][1]
+                correlation2 = np.corrcoef(returns, list(seed2weight.values()))[0][1]
                 wandb.log(
                     {
                         "Correlation between per level value error and weights": correlation1,
