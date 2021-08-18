@@ -12,7 +12,7 @@ from level_replay.algo.buffer import make_buffer
 from level_replay.algo.policy import DQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
-from level_replay.utils import ppo_normalise_reward
+from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -27,6 +27,9 @@ def train(args, seeds):
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = seeds
+
+    args.sge_job_id = int(os.environ.get("JOB_ID", -1))
+    args.sge_task_id = int(os.environ.get("SGE_TASK_ID", -1))
 
     torch.set_num_threads(1)
 
@@ -150,11 +153,9 @@ def train(args, seeds):
                     level_seeds[i],
                 )
                 if done[i]:
-                    for j in range(1, args.multi_step):
-                        n_reward = multi_step_reward(
-                            [reward_deque[i][k] for k in range(j, args.multi_step)],
-                            args.gamma,
-                        )
+                    reward_deque_i = list(reward_deque[i])
+                    for j in range(1, len(reward_deque_i)):
+                        n_reward = multi_step_reward(reward_deque_i[j:], args.gamma)
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
@@ -167,12 +168,14 @@ def train(args, seeds):
                         )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
+                ppo_normalised_reward = ppo_normalise_reward(episode_reward, args.env_name)
+                min_max_normalised_reward = min_max_normalise_reward(episode_reward, args.env_name)
                 wandb.log(
                     {
                         "Train Episode Returns": episode_reward,
-                        "Train Episode Returns (normalised)": ppo_normalise_reward(
-                            episode_reward, args.env_name
-                        ),
+                        "Train Episode Returns (normalised)": ppo_normalised_reward,
+                        "Train Episode Returns (ppo normalised)": ppo_normalised_reward,
+                        "Train Episode Returns (min-max normalised)": min_max_normalised_reward,
                     },
                     step=t * args.num_processes,
                 )
@@ -264,17 +267,21 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
+            test_ppo_normalised_reward = ppo_normalise_reward(mean_test_rewards, args.env_name)
+            train_ppo_normalised_reward = ppo_normalise_reward(mean_train_rewards, args.env_name)
+            test_min_max_normalised_reward = min_max_normalise_reward(mean_test_rewards, args.env_name)
+            train_min_max_normalised_reward = min_max_normalise_reward(mean_train_rewards, args.env_name)
             wandb.log(
                 {
                     "Test Evaluation Returns": mean_test_rewards,
                     "Train Evaluation Returns": mean_train_rewards,
                     "Generalization Gap:": mean_train_rewards - mean_test_rewards,
-                    "Test Evaluation Returns (normalised)": ppo_normalise_reward(
-                        mean_test_rewards, args.env_name
-                    ),
-                    "Train Evaluation Returns (normalised)": ppo_normalise_reward(
-                        mean_train_rewards, args.env_name
-                    ),
+                    "Test Evaluation Returns (normalised)": test_ppo_normalised_reward,
+                    "Train Evaluation Returns (normalised)": train_ppo_normalised_reward,
+                    "Test Evaluation Returns (ppo normalised)": test_ppo_normalised_reward,
+                    "Train Evaluation Returns (ppo normalised)": train_ppo_normalised_reward,
+                    "Test Evaluation Returns (min-max normalised)": test_min_max_normalised_reward,
+                    "Train Evaluation Returns (min-max normalised)": train_min_max_normalised_reward,
                 }
             )
 
