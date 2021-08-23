@@ -44,6 +44,7 @@ def train(args):
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
     )
+    wandb.run.save()
 
     atari_preprocessing = {
         "frame_skip": 4,
