@@ -69,8 +69,6 @@ def train(args):
 
     num_steps = int(args.T_max)
 
-    loss, grad_magnitude = None, None
-
     epsilon_start = args.initial_eps
     epsilon_final = args.end_eps
     epsilon_decay = args.eps_decay_period
@@ -89,7 +87,6 @@ def train(args):
 
     for t in range(num_steps):
         episode_timesteps += 1
-        action = None
         if t < args.start_timesteps or np.random.uniform() < epsilon(t):
             action = torch.LongTensor([env.action_space.sample()]).reshape(-1, 1).to(args.device)
         else:
@@ -139,6 +136,10 @@ def train(args):
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             loss, grad_magnitude = agent.train(replay_buffer)
             wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t)
+
+        if t % 10000 == 0:
+            effective_rank = agent.Q.effective_rank()
+            wandb.log({"Effective Rank of DQN": effective_rank}, step=t)
 
         if (t >= args.start_timesteps and (t + 1) % args.eval_freq == 0) or t == num_steps - 1:
             eval_episode_rewards = eval_policy(args, agent)
