@@ -35,6 +35,15 @@ def train(args):
         tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
         group=args.wandb_group,
     )
+    wandb.run.name = (
+        f"dqn-{args.env_name}"
+        + f"{'-PER' if args.PER else ''}"
+        + f"{'-dueling' if args.dueling else ''}"
+        + f"{'-CQL' if args.cql else ''}"
+        + f"{'-qrdqn' if args.qrdqn else ''}"
+        + f"{'-c51' if args.c51 else ''}"
+        + f"{'-noisylayers' if args.noisy_layers else ''}"
+    )
 
     atari_preprocessing = {
         "frame_skip": 4,
