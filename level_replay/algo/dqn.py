@@ -245,6 +245,17 @@ class DQN(nn.Module):
         if args.env_name.startswith("MiniGrid"):
             self.features = MiniGridCNN(args, env)
             self.conv_output_size = self.features.image_embedding_size
+        elif env.observation_space.shape[0] == 84:
+            # atari
+            self.features = ImpalaCNN(4)
+            example_state = torch.randn(
+                (
+                    1,
+                    4,
+                )
+                + env.observation_space.shape
+            )
+            self.conv_output_size = self.features(example_state).shape[1]
         else:
             self.features = ImpalaCNN(env.observation_space.shape[0])
             if env.observation_space.shape != (3, 64, 64):
@@ -302,7 +313,7 @@ class DQN(nn.Module):
 
     def _forward_qrdqn(self, x):
         quantiles = self.quantiles(x)
-        q = quantiles.mean(dim=1)
+        q = quantiles.mean(1)
         return q
 
     def _forward_dueling(self, x):
@@ -365,7 +376,7 @@ class DQN(nn.Module):
     def _quantiles_no_duel(self, x):
         x = self.features(x)
         x = x.view(-1, self.conv_output_size)
-        quantiles = self.fc_z_a(F.relu(self.fc_h_a(x))).view(-1, self.atoms, self.action_space)
+        quantiles = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.atoms, self.action_space)
         return quantiles
 
     def reset_noise(self):

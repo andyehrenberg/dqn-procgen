@@ -121,7 +121,7 @@ parser.add_argument(
 parser.add_argument(
     "--wandb_project",
     type=str,
-    default="off-policy-procgen",
+    default="thesis-experiments",
     choices=["off-policy-procgen", "thesis-experiments"],
 )
 parser.add_argument(

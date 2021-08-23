@@ -13,8 +13,12 @@ parser.add_argument("--T_max", type=int, default=50e6, help="Total environment s
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
 
 # Model parameters
+parser.add_argument("--c51", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--dueling", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--noisy_layers", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--qrdqn", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--cql", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
-parser.add_argument("--state_dim", type=tuple, default=(4, 84, 84))
 parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
 parser.add_argument("--discount", type=float, default=0.99, help="Discount factor on future returns")
 parser.add_argument("--adam_eps", type=float, default=1.5e-4)
@@ -50,12 +54,10 @@ parser.add_argument("--entropy_coef", type=float, default=0.01)
 parser.add_argument("--full_train_distribution", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--gae_lambda", type=float, default=0.95)
 parser.add_argument("--gamma", type=float, default=0.999)
-parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=True, help="Whether to use PER")
+parser.add_argument("--PER", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use PER")
 
 # Environment parameters
-parser.add_argument("--num_processes", type=int, default=64)
-parser.add_argument("--env_name", default="PongNoFrameskip-v0")
-parser.add_argument("--distribution_mode", default="easy")
+parser.add_argument("--env_name", default="BreakoutNoFrameskip-v0")
 parser.add_argument("--paint_vel_info", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--render", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--checkpoint_interval", type=int, default=0)
@@ -75,6 +77,24 @@ parser.add_argument(
     type=lambda x: bool(strtobool(x)),
     default=True,
     help="Whether to log with wandb or save results locally",
+)
+parser.add_argument(
+    "--wandb_project",
+    type=str,
+    default="thesis-experiments",
+    choices=["off-policy-procgen", "thesis-experiments"],
+)
+parser.add_argument(
+    "--wandb_tags",
+    type=str,
+    default="",
+    help="Additional tags for this wandb run",
+)
+parser.add_argument(
+    "--wandb_group",
+    type=str,
+    default="",
+    help="Wandb group for this run",
 )
 parser.add_argument("--log_dir", default="~/PLEXR/logs/")
 parser.add_argument("--log_interval", type=int, default=1)

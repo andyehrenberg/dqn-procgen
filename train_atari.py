@@ -1,4 +1,3 @@
-import logging
 import os
 from collections import deque
 from typing import List
@@ -9,7 +8,7 @@ import wandb
 
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer
-from level_replay.algo.policy import AtariAgent
+from level_replay.algo.policy import DQNAgent
 from level_replay.atari_args import parser
 
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -30,10 +29,11 @@ def train(args):
 
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
-        project="off-policy-procgen",
-        entity="ucl-dark",
+        project=args.wandb_project,
+        entity="andyehrenberg",
         config=vars(args),
-        tags=["atari"],
+        tags=["ddqn", "procgen"] + (args.wandb_tags.split(",") if args.wandb_tags else []),
+        group=args.wandb_group,
     )
 
     atari_preprocessing = {
@@ -47,12 +47,9 @@ def train(args):
 
     env, state_dim, num_actions = utils.make_env(args.env_name, atari_preprocessing)
 
-    env.action_space.n
-    agent = AtariAgent(args, env)
+    agent = DQNAgent(args, env)
 
-    num_updates = (args.T_max - args.start_timesteps) // args.train_freq
-
-    replay_buffer = make_buffer(args, num_updates, atari=True)
+    replay_buffer = make_buffer(args, env, atari=True)
 
     episode_reward = 0
 
@@ -103,6 +100,20 @@ def train(args):
             n_state = state_deque[0]
             n_action = action_deque[0]
             replay_buffer.add(n_state, n_action, next_state, n_reward, np.uint8(done), np.array([0]))
+            if done:
+                reward_deque_i = list(reward_deque)
+                for j in range(1, len(reward_deque_i)):
+                    n_reward = multi_step_reward(reward_deque_i[j:], args.gamma)
+                    n_state = state_deque[j]
+                    n_action = action_deque[j]
+                    replay_buffer.add(
+                        n_state,
+                        n_action,
+                        next_state,
+                        n_reward,
+                        np.uint8(done),
+                        np.array([0]),
+                    )
 
         state = next_state
 
@@ -175,10 +186,5 @@ def multi_step_reward(rewards, gamma):
 if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.disable(logging.CRITICAL)
 
     train(args)

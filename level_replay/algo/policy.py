@@ -61,6 +61,8 @@ class DQNAgent(object):
         elif self.Q.qrdqn:
             self.loss = self._loss_qrdqn
             self.kappa = 1.0
+            self.cumulative_density = np.array((2 * np.arange(self.Q.atoms) + 1) / (2.0 * self.Q.atoms))
+            self.cumulative_density = torch.from_numpy(self.cumulative_density).to(self.device)
         else:
             self.loss = self._loss
 
@@ -170,21 +172,22 @@ class DQNAgent(object):
         self.update_seed_weights(seeds, weights)
 
         quantiles = self.Q.quantiles(state)
-        action_index = action[..., None].expand(self.batch_size, self.Q.atoms, 1)
-        curr_quantiles = quantiles.gather(dim=2, index=action_index)
+        current_sa_quantiles = evaluate_quantile_at_action(quantiles, action)
 
         with torch.no_grad():
-            self.Q.reset_noise()
-            next_q = self.Q(next_state)
-            next_action = torch.argmax(next_q, dim=1, keepdim=True)
-            quantiles = self.Q_target.quantiles(state)
-            action_index = next_action[..., None].expand(self.batch_size, self.Q.atoms, 1)
-            next_quantiles = quantiles.gather(dim=2, index=action_index).transpose(1, 2)
-            target_quantiles = reward[..., None] + (
-                not_done[..., None] * (self.gamma ** self.n_step) * next_quantiles
-            )
+            next_q = self.Q_target(next_state)
+            next_a = torch.argmax(next_q, dim=1, keepdim=True)
 
-        td = target_quantiles - curr_quantiles
+            next_quantiles = self.Q_target.quantiles(next_state)
+            next_sa_quantiles = evaluate_quantile_at_action(next_quantiles, next_a)
+            next_sa_quantiles = next_sa_quantiles.transpose(1, 2)
+
+            target_sa_quantiles = (
+                reward[..., None] + not_done[..., None] * (self.gamma ** self.n_step) * next_sa_quantiles
+            )
+            assert target_sa_quantiles.shape == (self.batch_size, 1, self.Q.atoms)
+
+        td = target_sa_quantiles - current_sa_quantiles
 
         loss = self.quantile_huber(td, self.Q.tau_hats, weights, self.kappa)
 
@@ -539,3 +542,12 @@ class AtariAgent(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
+
+
+def evaluate_quantile_at_action(s_quantiles, action):
+    batch_size = s_quantiles.shape[0]
+    N = s_quantiles.shape[1]
+    action_index = action[..., None].expand(batch_size, N, 1)
+    sa_quantiles = s_quantiles.gather(dim=2, index=action_index)
+
+    return sa_quantiles
