@@ -171,30 +171,23 @@ class DQNAgent(object):
 
         self.update_seed_weights(seeds, weights)
 
-        quantiles = self.Q.quantiles(state)
-        current_sa_quantiles = evaluate_quantile_at_action(quantiles, action)
-
         with torch.no_grad():
-            next_q = self.Q_target(next_state)
-            next_a = torch.argmax(next_q, dim=1, keepdim=True)
-
             next_quantiles = self.Q_target.quantiles(next_state)
-            next_sa_quantiles = evaluate_quantile_at_action(next_quantiles, next_a)
-            next_sa_quantiles = next_sa_quantiles.transpose(1, 2)
+            next_greedy_actions = next_quantiles.mean(dim=1, keepdim=True).argmax(dim=2, keepdim=True)
+            next_greedy_actions = next_greedy_actions.expand(self.batch_size, self.Q.atoms, 1)
+            next_quantiles = next_quantiles.gather(dim=2, index=next_greedy_actions).squeeze(dim=2)
+            target_quantiles = reward + not_done * self.gamma ** self.n_step * next_quantiles
 
-            target_sa_quantiles = (
-                reward[..., None] + not_done[..., None] * (self.gamma ** self.n_step) * next_sa_quantiles
-            )
-            assert target_sa_quantiles.shape == (self.batch_size, 1, self.Q.atoms)
+        current_quantiles = self.Q.quantiles(state)
+        actions = action[..., None].long().expand(self.batch_size, self.Q.atoms, 1)
+        current_quantiles = torch.gather(current_quantiles, dim=2, index=actions).squeeze(dim=2)
 
-        td = target_sa_quantiles - current_sa_quantiles
-
-        loss = self.quantile_huber(td, self.Q.tau_hats, weights, self.kappa)
+        loss, td = self.quantile_huber_loss(current_quantiles, target_quantiles, weights)
 
         priority = (
-            td.clamp(min=self.min_priority)
+            td.abs()
+            .clamp(min=self.min_priority)
             .detach()
-            .abs()
             .sum(dim=1)
             .mean(dim=1, keepdim=True)
             .cpu()
@@ -256,30 +249,19 @@ class DQNAgent(object):
             td_errors.abs() <= kappa, 0.5 * td_errors.pow(2), kappa * (td_errors.abs() - 0.5 * kappa)
         )
 
-    def quantile_huber(self, td_errors, taus, weights=None, kappa=1.0):
-        assert not taus.requires_grad
-        batch_size, N, N_dash = td_errors.shape
+    def quantile_huber_loss(self, current_quantiles, target_quantiles, weights):
+        n_quantiles = current_quantiles.shape[-1]
+        cum_prob = (
+            torch.arange(n_quantiles, device=current_quantiles.device, dtype=torch.float) + 0.5
+        ) / n_quantiles
+        cum_prob = cum_prob.view(1, -1, 1)
 
-        # Calculate huber loss element-wisely.
-        element_wise_huber_loss = self.huber(td_errors, kappa)
-        assert element_wise_huber_loss.shape == (batch_size, N, N_dash)
+        td = target_quantiles.unsqueeze(-2) - current_quantiles.unsqueeze(-1)
+        huber_loss = self.huber(td)
+        loss = torch.abs(cum_prob - (td.detach() < 0).float()) * huber_loss
+        loss = (loss.sum(dim=-2) * weights).mean()
 
-        # Calculate quantile huber loss element-wisely.
-        element_wise_quantile_huber_loss = (
-            torch.abs(taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
-        )
-        assert element_wise_quantile_huber_loss.shape == (batch_size, N, N_dash)
-
-        # Quantile huber loss.
-        batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
-        assert batch_quantile_huber_loss.shape == (batch_size, 1)
-
-        if weights is not None:
-            quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
-        else:
-            quantile_huber_loss = batch_quantile_huber_loss.mean()
-
-        return quantile_huber_loss
+        return loss, td
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
@@ -542,12 +524,3 @@ class AtariAgent(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
-
-
-def evaluate_quantile_at_action(s_quantiles, action):
-    batch_size = s_quantiles.shape[0]
-    N = s_quantiles.shape[1]
-    action_index = action[..., None].expand(batch_size, N, 1)
-    sa_quantiles = s_quantiles.gather(dim=2, index=action_index)
-
-    return sa_quantiles
