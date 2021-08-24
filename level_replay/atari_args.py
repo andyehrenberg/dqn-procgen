@@ -11,6 +11,8 @@ parser.add_argument("--train_freq", type=int, default=4, help="Number of steps b
 parser.add_argument("--eval_freq", type=int, default=50000, help="Evaluation frequency")
 parser.add_argument("--T_max", type=int, default=50e6, help="Total environment steps")
 parser.add_argument("--max_episode_length", type=int, default=108e3, help="Max timesteps in one episode")
+parser.add_argument("--num_processes", type=int, default=32)
+parser.add_argument("--num_train_seeds", type=int, default=50)
 
 # Model parameters
 parser.add_argument("--c51", type=lambda x: bool(strtobool(x)), default=False)
@@ -34,7 +36,7 @@ parser.add_argument("--tau", type=float, default=0.005, help="tau")
 parser.add_argument("--initial_eps", type=float, default=1, help="intial epsilon")
 parser.add_argument("--end_eps", type=float, default=0.01, help="end epsilon")
 parser.add_argument("--eps_decay_period", type=int, default=25e4)
-parser.add_argument("--eval_eps", type=float, default=0.001)
+parser.add_argument("--eval_eps", type=float, default=0.05)
 parser.add_argument("--min_priority", type=float, default=1e-1)
 parser.add_argument("--batch_size", type=int, default=32, help="Batch Size")
 parser.add_argument("--norm_clip", type=float, default=10)
