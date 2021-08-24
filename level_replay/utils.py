@@ -19,16 +19,16 @@ import torch
 from level_replay.envs import VideoWrapper
 
 
-class DotDict(dict):
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-    def __init__(self, dct):
-        for key, value in dct.items():
-            if hasattr(value, "keys"):
-                value = DotDict(value)
-            self[key] = value
+# class DotDict(dict):
+#    __getattr__ = dict.__getitem__
+#    __setattr__ = dict.__setitem__
+#    __delattr__ = dict.__delitem__
+#
+#    def __init__(self, dct):
+#        for key, value in dct.items():
+#            if hasattr(value, "keys"):
+#                value = DotDict(value)
+#            self[key] = value
 
 
 def init(module, weight_init, bias_init, gain=1):
@@ -206,8 +206,8 @@ class AtariPreprocessing(object):
 
 
 # Create environment, add wrapper if necessary and create env_properties
-def make_env(env_name, atari_preprocessing, record_runs=False):
-    env = gym.make(env_name)
+def make_env(env_name, atari_preprocessing, repeat_action_probability=0.0, record_runs=False):
+    env = gym.make(env_name, repeat_action_probability=repeat_action_probability)
 
     if record_runs:
         env = VideoWrapper(env, log_videos=False)
