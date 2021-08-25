@@ -1,8 +1,7 @@
 import copy
-
 import torch
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC, TwinnedDQN
+from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC
 from torch.nn.utils import clip_grad_norm_
 
 import numpy as np
@@ -291,17 +290,14 @@ class SACAgent(object):
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
-        self.Q = TwinnedDQN(args, env).to(self.device)
+        self.Q = DQN(args, env).to(self.device)
         self.policy = SAC(args, env).to(self.device)
         self.policy_optimizer = getattr(torch.optim, args.optimizer)(
             self.policy.parameters(), **args.optimizer_parameters
         )
         self.Q_target = copy.deepcopy(self.Q)
-        self.Q1_optimizer = getattr(torch.optim, args.optimizer)(
-            self.Q.q1.parameters(), **args.optimizer_parameters
-        )
-        self.Q2_optimizer = getattr(torch.optim, args.optimizer)(
-            self.Q.q2.parameters(), **args.optimizer_parameters
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.parameters(), **args.optimizer_parameters
         )
         for param in self.Q_target.parameters():
             param.requires_grad = False
@@ -360,7 +356,7 @@ class SACAgent(object):
             else:
                 self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
 
-        q1_loss, q2_loss, td = self.update_critic(state, action, next_state, reward, not_done, weights)
+        q_loss, td = self.update_critic(state, action, next_state, reward, not_done, weights)
         policy_loss, entropies = self.update_actor(state, action, next_state, reward, not_done, weights)
         entropy_loss = self.update_alpha(entropies, weights)
 
@@ -368,52 +364,34 @@ class SACAgent(object):
             priority = td.clamp(min=self.min_priority).cpu().data.numpy().flatten()
             replay_buffer.update_priority(ind, priority)
 
-        return q1_loss, q2_loss, policy_loss, entropy_loss
+        return q_loss, policy_loss, entropy_loss
 
     def update_critic(self, state, action, next_state, reward, not_done, weights):
-        current_q1, current_q2 = self.Q(state)
-        current_q1 = current_q1.gather(1, action)
-        current_q2 = current_q2.gather(1, action)
+        current_q = self.Q(state)
+        current_q = current_q.gather(1, action)
 
         with torch.no_grad():
             _, action_probs, log_action_probs = self.policy.sample(next_state)
-            next_q1, next_q2 = self.Q_target(next_state)
-            next_q = (action_probs * (torch.min(next_q1, next_q2) - self.alpha * log_action_probs)).sum(
-                dim=1, keepdim=True
-            )
-
+            next_q = self.Q_target(next_state)
+            next_q = (action_probs * next_q - self.alpha * log_action_probs).sum(dim=1, keepdim=True)
             target_Q = reward + not_done * (self.gamma ** self.n_step) * next_q
-
-        td = torch.abs(current_q1.detach() - target_Q)
-
-        q1_loss = torch.mean((current_q1 - target_Q).pow(2) * weights)
-        q2_loss = torch.mean((current_q2 - target_Q).pow(2) * weights)
-
-        self.Q1_optimizer.zero_grad()
-        q1_loss.backward()
-        self.Q1_optimizer.step()
-        self.Q2_optimizer.zero_grad()
-        q2_loss.backward()
-        self.Q2_optimizer.step()
-
-        return q1_loss, q2_loss, td
+        td = torch.abs(current_q.detach() - target_Q)
+        q_loss = torch.mean((current_q - target_Q).pow(2) * weights)
+        self.Q_optimizer.zero_grad()
+        q_loss.backward()
+        self.Q_optimizer.step()
+        return q_loss, td
 
     def update_actor(self, state, action, next_state, reward, not_done, weights):
         _, action_probs, log_action_probs = self.policy.sample(state)
-
         with torch.no_grad():
-            q1, q2 = self.Q(state)
-            q = torch.min(q1, q2)
-
+            q = self.Q(state)
         entropies = -torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
-        q = torch.sum(torch.min(q1, q2) * action_probs, dim=1, keepdim=True)
-
+        q = torch.sum(q * action_probs, dim=1, keepdim=True)
         policy_loss = (weights * (-q - self.alpha * entropies)).mean()
-
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
         self.policy_optimizer.step()
-
         return policy_loss, entropies.detach()
 
     def update_alpha(self, entropies, weights):
