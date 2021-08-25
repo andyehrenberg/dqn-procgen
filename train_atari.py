@@ -59,7 +59,7 @@ def train(args, seeds):
         "max_episode_timesteps": 27e3,
     }
 
-    envs = AtariVecEnv("BreakoutNoFrameskip-v0", seeds, args.num_processes, args.device, atari_preprocessing)
+    envs = AtariVecEnv(args.env_name, seeds, args.num_processes, args.device, atari_preprocessing)
 
     agent = DQNAgent(args, envs)
 
@@ -219,6 +219,8 @@ class AtariVecEnv:
         self.atari_preprocessing = atari_preprocessing
         self.replay_action_probs = [(i / 1000.0) / 2 for i in range(1000)]
         np.random.shuffle(self.replay_action_probs)
+        if num_processes == 1:
+            seeds = [np.argmin(self.replay_action_probs)]
         self.seeds = seeds
         self.test_seeds = [self.seeds[-1] + i for i in range(1, 1001 - len(self.seeds))]
         self.num_processes = num_processes
