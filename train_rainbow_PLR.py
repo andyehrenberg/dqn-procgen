@@ -204,19 +204,6 @@ def train(args, seeds):
             replay_buffer.after_update()
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
-            count_data = [
-                [seed, count] for (seed, count) in zip(agent.seed_weights.keys(), agent.seed_weights.values())
-            ]
-            total_weight = sum([i[1] for i in count_data])
-            count_data = [[i[0], i[1] / total_weight] for i in count_data]
-            table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
-            wandb.log(
-                {
-                    f"Seed Sampling Distribution at time {t}": wandb.plot.bar(
-                        table, "Seed", "Weight", title="Sampling distribution of levels"
-                    )
-                }
-            )
             count_data = [[seed, weight] for (seed, weight) in enumerate(replay_buffer.seed_scores)]
             total_weight = sum([i[1] for i in count_data])
             count_data = [[i[0], i[1] / total_weight] for i in count_data]
