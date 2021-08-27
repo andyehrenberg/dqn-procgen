@@ -259,7 +259,7 @@ class AtariVecEnv:
         next_states = torch.zeros(
             (self.num_processes, self.n_frames, 84, 84), dtype=torch.float32, device=self.device
         )
-        rewards = torch.zeros((self.num_processes, 1), dtype=torch.float32, device=self.device)
+        rewards = np.zeros((self.num_processes, 1))
         dones = []
         infos: List[dict] = [{} for _ in range(self.num_processes)]
         for idx, env in enumerate(self.envs):
