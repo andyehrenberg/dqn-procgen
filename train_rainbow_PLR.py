@@ -41,7 +41,7 @@ def train(args, seeds):
         group=args.wandb_group,
     )
     wandb.run.name = (
-        f"dqn-{args.env_name}-{args.num_train_seeds}levels"
+        f"dqn-PLR-{args.env_name}-{args.num_train_seeds}levels"
         + f"{'-PER' if args.PER else ''}"
         + f"{'-dueling' if args.dueling else ''}"
         + f"{'-CQL' if args.cql else ''}"
@@ -156,14 +156,18 @@ def train(args, seeds):
                     n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
                 )
                 if done[i]:
-                    for j in range(1, args.multi_step):
-                        n_reward = multi_step_reward(
-                            [reward_deque[i][k] for k in range(j, args.multi_step)], args.gamma
-                        )
+                    reward_deque_i = list(reward_deque[i])
+                    for j in range(1, len(reward_deque_i)):
+                        n_reward = multi_step_reward(reward_deque_i[j:], args.gamma)
                         n_state = state_deque[i][j]
                         n_action = action_deque[i][j]
                         replay_buffer.add(
-                            n_state, n_action, next_state[i], n_reward, np.uint8(done[i]), level_seeds[i]
+                            n_state,
+                            n_action,
+                            next_state[i],
+                            n_reward,
+                            np.uint8(done[i]),
+                            level_seeds[i],
                         )
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
