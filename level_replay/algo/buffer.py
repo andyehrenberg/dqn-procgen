@@ -36,14 +36,9 @@ class AbstractBuffer:
 class Buffer(AbstractBuffer):
     def __init__(self, args, env):
         super(Buffer, self).__init__(args, env)
-        self.ere = args.ERE
-        self.prioritized = args.PER and not self.ere
+        self.prioritized = args.PER
 
-        if self.ere:
-            self.sizes = [int(self.max_size * 0.995 ** (k * 1000 / 64)) for k in range(64)]
-            self.size_ptr = -1
-
-        elif self.prioritized:
+        if self.prioritized:
             num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
             self.tree = SumTree(self.max_size)
             self.max_priority = 1.0
@@ -107,10 +102,6 @@ class Buffer(AbstractBuffer):
             weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
             weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
             self.beta = min(self.beta + self.beta_stepper, 1)
-        elif self.ere:
-            self.size_ptr = (self.size_ptr + 1) % 64
-            ind = np.random.randint(0, min(self.sizes[self.size_ptr], self.size), size=self.batch_size)
-            weights = torch.FloatTensor([1]).to(self.device)
         else:
             ind = np.random.randint(0, self.size, size=self.batch_size)
             weights = torch.FloatTensor([1]).to(self.device)
