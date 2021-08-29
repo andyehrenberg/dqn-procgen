@@ -52,7 +52,6 @@ def train(args, seeds):
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
     )
-    wandb.run.save()
 
     num_levels = 1
     level_sampler_args = dict(

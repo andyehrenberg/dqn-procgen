@@ -8,7 +8,9 @@ import torch
 import wandb
 
 from level_replay import utils
-from level_replay.algo.buffer import PLRBuffer, RolloutStorage
+from level_replay.algo.buffer import PLRBuffer as PLRBuffer1
+from level_replay.algo.buffer import RolloutStorage
+from level_replay.algo.plr_buffer import PLRBuffer as PLRBuffer2
 from level_replay.algo.policy import DQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
@@ -49,7 +51,6 @@ def train(args, seeds):
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
     )
-    wandb.run.save()
 
     num_levels = 1
     level_sampler_args = dict(
@@ -80,7 +81,10 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    replay_buffer = PLRBuffer(args, envs)
+    if args.per_seed_buffer:
+        replay_buffer = PLRBuffer2(args, envs)
+    else:
+        replay_buffer = PLRBuffer1(args, envs)
     rollouts = RolloutStorage(
         args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
     )

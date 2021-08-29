@@ -63,6 +63,7 @@ parser.add_argument(
 parser.add_argument("--beta", type=float, default=0.4, help="Beta value for PER")
 parser.add_argument("--alpha", type=float, default=0.5, help="Alpha value for PER")
 parser.add_argument("--ERE", type=lambda x: bool(strtobool(x)), default=False, help="Whether to use ERE")
+parser.add_argument("--per_seed_buffer", type=lambda x: bool(strtobool(x)), default=False)
 
 # Environment parameters
 parser.add_argument("--num_processes", type=int, default=64)

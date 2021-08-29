@@ -27,7 +27,7 @@ class DQNAgent(object):
         for param in self.Q_target.parameters():
             param.requires_grad = False
 
-        self.PER = args.PER and not args.ERE
+        self.PER = args.PER
         self.n_step = args.multi_step
 
         self.min_priority = args.min_priority
@@ -208,7 +208,7 @@ class DQNAgent(object):
         if self.track_seed_weights:
             for idx, seed in enumerate(seeds):
                 s = seed.cpu().numpy()[0]
-                if len(weights) > 1:
+                if type(weights) != int and len(weights) > 1:
                     self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
                 else:
                     self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
@@ -308,7 +308,7 @@ class SACAgent(object):
         self.alpha = self.log_alpha.exp()
         self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=args.learning_rate)
 
-        self.PER = args.PER and not args.ERE
+        self.PER = args.PER
         self.n_step = args.multi_step
 
         self.min_priority = args.min_priority
