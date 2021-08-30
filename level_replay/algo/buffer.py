@@ -452,9 +452,22 @@ class PLRBuffer(AbstractBuffer):
             self.seed_staleness[selected_idx] = 0
 
 
-class AtariBuffer(AbstractBuffer):
+class AtariBuffer:
     def __init__(self, args, env):
-        super(AtariBuffer, self).__init__(args, env)
+        self.batch_size = args.batch_size
+        self.max_size = int(args.memory_capacity)
+        self.device = args.device
+        self.all_seeds = args.seeds
+
+        self.ptr = 0
+        self.size = 0
+
+        self.state = np.zeros((self.max_size, 4, 84, 84), dtype=np.uint8)
+        self.action = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.next_state = np.array(self.state)
+        self.reward = np.zeros((self.max_size, 1))
+        self.not_done = np.zeros((self.max_size, 1), dtype=np.uint8)
+        self.seeds = np.zeros((self.max_size, 1), dtype=np.uint8)
         self.prioritized = args.PER
         num_updates = (args.T_max // args.num_processes - args.start_timesteps) // args.train_freq
         if self.prioritized:
