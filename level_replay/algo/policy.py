@@ -80,6 +80,13 @@ class DQNAgent(object):
             value = q.max(1)[0]
             return value
 
+    def advantage(self, state, eps):
+        q = self.Q(state)
+        max_q = q.max(1)[0]
+        mean_q = q.mean(1)
+        v = (1 - eps) * max_q + eps * mean_q
+        return q - v.repeat(q.shape[1]).reshape(-1, q.shape[1])
+
     def train(self, replay_buffer):
         ind, loss, priority = self.loss(replay_buffer)
 

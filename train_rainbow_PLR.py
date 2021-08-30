@@ -205,6 +205,11 @@ def train(args, seeds):
 
             rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
 
+            advantages = rollouts.returns - rollouts.value_preds
+            mean_advs = advantages.abs().mean().item()
+
+            wandb.log({"Mean Advantage": mean_advs}, step=t * args.num_processes)
+
             replay_buffer.update_with_rollouts(rollouts)
 
             rollouts.after_update()
