@@ -155,11 +155,10 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:
-            q1_loss, q2_loss, policy_loss, entropy_loss = agent.train(replay_buffer)
+            q_loss, policy_loss, entropy_loss = agent.train(replay_buffer)
             wandb.log(
                 {
-                    "Value Loss 1": q1_loss,
-                    "Value Loss 2": q2_loss,
+                    "Value Loss": q_loss,
                     "Policy Loss": policy_loss,
                     "Entropy Loss": entropy_loss,
                 },
