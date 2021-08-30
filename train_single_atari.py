@@ -23,6 +23,7 @@ def train(args):
     if "cuda" in args.device.type:
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
+    args.seeds = None
 
     torch.set_num_threads(1)
 
