@@ -136,9 +136,9 @@ class PLRBuffer:
                 score_function_kwargs["rewards"] = rollouts.rewards[start_t:t, actor_index]
                 score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:t, actor_index]
 
-                score = score_function(**score_function_kwargs)
+                score1 = score_function(**score_function_kwargs)
                 num_steps = len(rollouts.rewards[start_t:t, actor_index])
-                self.update_seed_score(actor_index, seed_idx_t, score, num_steps)
+                self.update_seed_score(actor_index, seed_idx_t, score1, num_steps)
 
                 start_t = t.item()
 
@@ -152,9 +152,9 @@ class PLRBuffer:
                 score_function_kwargs["rewards"] = rollouts.rewards[start_t:, actor_index]
                 score_function_kwargs["value_preds"] = rollouts.value_preds[start_t:, actor_index]
 
-                score = score_function(**score_function_kwargs)
+                score2 = score_function(**score_function_kwargs)
                 num_steps = len(rollouts.rewards[start_t:, actor_index])
-                self._partial_update_seed_score(actor_index, seed_idx_t, score, num_steps)
+                self._partial_update_seed_score(actor_index, seed_idx_t, score2, num_steps)
 
     def after_update(self):
         # Reset partial updates, since weights have changed, and thus logits are now stale
@@ -205,6 +205,7 @@ class PLRBuffer:
         if self.buffers[seed].size >= self.batch_size_per_seed:
             return True
         else:
+            print(seed, " is not a valid seed\n")
             return False
 
     def sample(self):

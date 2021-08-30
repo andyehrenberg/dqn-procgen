@@ -124,6 +124,18 @@ def train(args, seeds):
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
             wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
+        if t % 500:
+            advantages = agent.advantage(state, cur_epsilon)
+            mean_max_advantage = advantages.max(1)[0].mean()
+            mean_min_advantage = advantages.min(1)[0].mean()
+            wandb.log(
+                {
+                    "Mean Max Advantage": mean_max_advantage,
+                    "Mean Min Advantage": mean_min_advantage,
+                },
+                step=t * args.num_processes,
+            )
+
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
 
