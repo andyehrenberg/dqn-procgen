@@ -161,6 +161,7 @@ def train(args, seeds):
                     "Value Loss": q_loss,
                     "Policy Loss": policy_loss,
                     "Entropy Loss": entropy_loss,
+                    "Entropy Coefficient:": agent.alpha.cpu().item(),
                 },
                 step=t * args.num_processes,
             )
