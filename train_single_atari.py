@@ -93,6 +93,7 @@ def train(args):
 
         # Perform action and log results
         next_state, reward, done, info = env.step(action)
+        next_state = (torch.FloatTensor(next_state) / 255.0).to(args.device)
 
         state_deque.append(state)
         reward_deque.append(reward)
