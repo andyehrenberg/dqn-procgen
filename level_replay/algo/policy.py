@@ -378,6 +378,7 @@ class SACAgent(object):
         td = torch.abs(current_q.detach() - target_Q)
         q_loss = torch.mean((current_q - target_Q).pow(2) * weights)
         self.Q_optimizer.zero_grad()
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)
         q_loss.backward()
         self.Q_optimizer.step()
         return q_loss, td
@@ -390,6 +391,7 @@ class SACAgent(object):
         q = torch.sum(q * action_probs, dim=1, keepdim=True)
         policy_loss = (weights * (-q - self.alpha * entropies)).mean()
         self.policy_optimizer.zero_grad()
+        clip_grad_norm_(self.policy.parameters(), self.norm_clip)
         policy_loss.backward()
         self.policy_optimizer.step()
         return policy_loss, entropies.detach()
