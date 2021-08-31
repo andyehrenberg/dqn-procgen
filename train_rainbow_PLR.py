@@ -29,6 +29,7 @@ def train(args, seeds):
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = seeds
+    args.PLR = True
 
     torch.set_num_threads(1)
 
