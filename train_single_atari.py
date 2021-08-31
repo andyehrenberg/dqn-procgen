@@ -24,6 +24,8 @@ def train(args):
         print("Using CUDA\n")
     args.optimizer_parameters = {"lr": args.learning_rate, "eps": args.adam_eps}
     args.seeds = None
+    args.sge_job_id = int(os.environ.get("JOB_ID", -1))
+    args.sge_task_id = int(os.environ.get("SGE_TASK_ID", -1))
 
     torch.set_num_threads(1)
 
@@ -94,6 +96,7 @@ def train(args):
         # Perform action and log results
         next_state, reward, done, info = env.step(action)
         next_state = (torch.FloatTensor(next_state) / 255.0).to(args.device)
+        episode_reward += reward
 
         state_deque.append(state)
         reward_deque.append(reward)
