@@ -126,7 +126,7 @@ def train(args, seeds):
             wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
         if t % 500 and not args.qrdqn or args.c51:
-            advantages = agent.advantage(state, cur_epsilon)
+            advantages = agent.advantage(state, epsilon(t))
             mean_max_advantage = advantages.max(1)[0].mean()
             mean_min_advantage = advantages.min(1)[0].mean()
             wandb.log(
