@@ -19,7 +19,7 @@ class LevelBufferConfig:
 class PLRBuffer:
     def __init__(self, args, env):
         self.device = args.device
-        self.seeds = args.seeds
+        seeds = args.seeds
         self.obs_space = env.observation_space.shape
         self.action_space = env.action_space.n
         self.num_actors = args.num_processes
@@ -38,7 +38,7 @@ class PLRBuffer:
         self.num_seeds_in_update = 64
         self.batch_size_per_seed = 32
 
-        self._init_seed_index(self.seeds)
+        self._init_seed_index(seeds)
 
         self.unseen_seed_weights = np.array([1.0] * len(self.seeds))
         self.seed_scores = np.array([0.0] * len(self.seeds), dtype=np.float)
@@ -52,9 +52,12 @@ class PLRBuffer:
         buffer_config.batch_size = self.batch_size_per_seed
 
         self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
+        self.valid_buffers = np.array([0.0] * len(self.seeds), dtype=np.float)
 
     def add(self, state, action, next_state, reward, done, seed):
         self.buffers[seed.item()].add(state, action, next_state, reward, done, seed)
+        if self.buffers[seed.item()].size > self.batch_size_per_seed:
+            self.valid_buffers[self.seed2index[seed.item()]] = 1.0
 
     def _get_weights(self, ind):
         seeds = self.seeds[ind]
@@ -189,7 +192,13 @@ class PLRBuffer:
         return int(seed)
 
     def _sample_unseen_level(self):
-        sample_weights = self.unseen_seed_weights / self.unseen_seed_weights.sum()
+        w = self.unseen_seed_weights * self.valid_buffers
+        if w.sum() == 0:
+            if self.valid_buffers.sum() > 0:
+                return self._sample_replay_level()
+            else:
+                return None
+        sample_weights = w / w.sum()
 
         while True:
             seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
@@ -202,10 +211,9 @@ class PLRBuffer:
         return int(seed)
 
     def _is_valid_seed(self, seed):
-        if self.buffers[seed].size >= self.batch_size_per_seed:
+        if self.valid_buffers[seed] == 1.0:
             return True
         else:
-            print(seed, " is not a valid seed\n")
             return False
 
     def sample(self):

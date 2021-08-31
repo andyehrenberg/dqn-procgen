@@ -30,6 +30,7 @@ def train(args, seeds):
 
     args.sge_job_id = int(os.environ.get("JOB_ID", -1))
     args.sge_task_id = int(os.environ.get("SGE_TASK_ID", -1))
+    args.PLR = False
 
     torch.set_num_threads(1)
 
