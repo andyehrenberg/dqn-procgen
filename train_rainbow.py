@@ -5,7 +5,6 @@ from typing import List
 
 import numpy as np
 import torch
-import time
 
 import wandb
 from level_replay import utils
@@ -104,7 +103,6 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
-    start = time.time()
     for t in range(num_steps):
         if t % args.train_freq == 0:
             if agent.Q.noisy_layers:
@@ -279,7 +277,6 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
-            print(f"Evaluation done at time {time.time() - start}")
             test_ppo_normalised_reward = ppo_normalise_reward(mean_test_rewards, args.env_name)
             train_ppo_normalised_reward = ppo_normalise_reward(mean_train_rewards, args.env_name)
             test_min_max_normalised_reward = min_max_normalise_reward(mean_test_rewards, args.env_name)
@@ -441,7 +438,6 @@ def plot_level_returns(level_seeds, returns, estimates, gaps, episode_reward, i,
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    print(args)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)

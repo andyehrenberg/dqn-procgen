@@ -4,9 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
 import os
-import time
 from collections import deque
 from test import evaluate
 
@@ -45,13 +43,6 @@ def train(args, seeds):
     wandb.run.name = f"ppo-{args.env_name}-{args.num_train_seeds}-levels"
 
     utils.seed(args.seed)
-
-    # Configure logging
-    if args.xpid is None:
-        args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
-    log_dir = os.path.expandvars(os.path.expanduser(args.log_dir))
-
-    checkpointpath = os.path.expandvars(os.path.expanduser("%s/%s/%s" % (log_dir, args.xpid, "model.tar")))
 
     # Configure actor envs
     start_level = 0
@@ -101,19 +92,6 @@ def train(args, seeds):
         envs.action_space,
         actor_critic.recurrent_hidden_state_size,
     )
-
-    def checkpoint():
-        if args.disable_checkpoint:
-            return
-        logging.info("Saving checkpoint to %s", checkpointpath)
-        torch.save(
-            {
-                "model_state_dict": actor_critic.state_dict(),
-                "optimizer_state_dict": agent.optimizer.state_dict(),
-                "args": vars(args),
-            },
-            checkpointpath,
-        )
 
     agent = algo.PPO(
         actor_critic,
@@ -255,7 +233,6 @@ def train(args, seeds):
 
             if j == num_updates - 1:
                 print(f"\nLast update: Evaluating on {args.final_num_test_seeds} test levels...\n  ")
-                # logging.info(f"\nLast update: Evaluating on {args.num_test_seeds} test levels...\n  ")
                 final_eval_episode_rewards = evaluate(args, actor_critic, args.final_num_test_seeds, device)
 
                 mean_final_eval_episode_rewards = np.mean(final_eval_episode_rewards)
@@ -306,13 +283,6 @@ def plot_level_returns(level_seeds, episode_reward, i, step):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    print(args)
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.disable(logging.CRITICAL)
 
     if args.seed_path:
         train_seeds = load_seeds(args.seed_path)

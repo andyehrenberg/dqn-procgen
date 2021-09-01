@@ -13,6 +13,7 @@ from level_replay.algo.buffer import PLRBuffer as PLRBuffer1
 from level_replay.algo.buffer import RolloutStorage
 from level_replay.algo.plr_buffer import PLRBuffer as PLRBuffer2
 from level_replay.algo.policy import DQNAgent
+from level_replay.algo.plr_utils import warm_up
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward
@@ -83,13 +84,15 @@ def train(args, seeds):
 
     if args.per_seed_buffer:
         replay_buffer = PLRBuffer2(args, envs)
+        args.start_timesteps = 0
     else:
         replay_buffer = PLRBuffer1(args, envs)
-    rollouts = RolloutStorage(
-        args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
-    )
 
     agent = DQNAgent(args, envs)
+
+    start_steps = 0
+    if args.per_seed_buffer:
+        start_steps = warm_up(replay_buffer, agent, args)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -98,18 +101,17 @@ def train(args, seeds):
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
 
+    rollouts = RolloutStorage(
+        args.num_steps, args.num_processes, envs.observation_space.shape, envs.action_space
+    )
     rollouts.obs[0].copy_(state)
     rollouts.to(args.device)
-
-    episode_reward = 0
 
     state_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     reward_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
 
     num_steps = int(args.T_max // args.num_processes)
-
-    loss, grad_magnitude = None, None
 
     epsilon_start = 1.0
     epsilon_final = args.end_eps
@@ -122,9 +124,7 @@ def train(args, seeds):
 
     start = time.time()
     print("Beginning training")
-    for t in range(num_steps):
-        if t == args.start_timesteps:
-            print("Done initializing buffer")
+    for t in range(num_steps - start_steps):
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -252,7 +252,6 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
-            print(f"Evaluation done at time {time.time() - start}")
             wandb.log(
                 {
                     "Test Evaluation Returns": mean_test_rewards,
@@ -401,7 +400,6 @@ def plot_level_returns(level_seeds, episode_reward, i, step):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    print(args)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
