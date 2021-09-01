@@ -5,10 +5,9 @@ import numpy as np
 import torch
 
 from level_replay.envs import make_dqn_lr_venv
-from level_replay.algo.buffer import RolloutStorage
 
 
-def warm_up(replay_buffer, agent, args):
+def warm_up(replay_buffer, args):
     num_levels = 1
     level_sampler_args = dict(
         num_actors=len(args.seeds),
@@ -38,10 +37,6 @@ def warm_up(replay_buffer, agent, args):
         level_sampler_args=level_sampler_args,
     )
 
-    rollouts = RolloutStorage(
-        args.num_steps, len(args.seeds), envs.observation_space.shape, envs.action_space
-    )
-
     level_seeds = torch.zeros(len(args.seeds))
     if level_sampler:
         state, level_seeds = envs.reset()
@@ -49,14 +44,11 @@ def warm_up(replay_buffer, agent, args):
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
 
-    rollouts.obs[0].copy_(state)
-    rollouts.to(args.device)
-
     state_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(len(args.seeds))]
     reward_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(len(args.seeds))]
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(len(args.seeds))]
 
-    num_steps = int(100000 / len(args.seeds))
+    num_steps = 50
 
     for _ in range(num_steps):
         action = (
@@ -64,11 +56,9 @@ def warm_up(replay_buffer, agent, args):
             .reshape(-1, 1)
             .to(args.device)
         )
-        value = agent.get_value(state)
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
-        masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
 
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():
@@ -106,21 +96,7 @@ def warm_up(replay_buffer, agent, args):
                 reward_deque[i].clear()
                 action_deque[i].clear()
 
-        rollouts.insert(next_state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
-
         state = next_state
-
-        if (rollouts.step + 1) == rollouts.num_steps:
-            obs_id = rollouts.obs[-1]
-            next_value = agent.get_value(obs_id).unsqueeze(1).detach()
-
-            rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
-
-            replay_buffer.update_with_rollouts(rollouts)
-
-            rollouts.after_update()
-
-            replay_buffer.after_update()
 
     envs.close()
 

@@ -84,15 +84,14 @@ def train(args, seeds):
 
     if args.per_seed_buffer:
         replay_buffer = PLRBuffer2(args, envs)
-        args.start_timesteps = 0
     else:
         replay_buffer = PLRBuffer1(args, envs)
 
     agent = DQNAgent(args, envs)
 
-    start_steps = 0
     if args.per_seed_buffer:
-        start_steps = warm_up(replay_buffer, agent, args)
+        start_timesteps = warm_up(replay_buffer, agent, args)
+        args.start_timesteps -= start_timesteps
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -124,7 +123,7 @@ def train(args, seeds):
 
     start = time.time()
     print("Beginning training")
-    for t in range(num_steps - start_steps):
+    for t in range(num_steps):
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
