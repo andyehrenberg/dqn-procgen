@@ -6,6 +6,7 @@ from typing import List
 import numpy as np
 import torch
 import wandb
+import time
 
 from level_replay import utils
 from level_replay.algo.buffer import PLRBuffer as PLRBuffer1
@@ -18,11 +19,8 @@ from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-last_checkpoint_time = None
-
 
 def train(args, seeds):
-    global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.device = torch.device("cuda:0" if args.cuda else "cpu")
     if "cuda" in args.device.type:
@@ -35,6 +33,8 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
+    os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
+    os.environ["WANB_MODE"] = "offline"
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
         project=args.wandb_project,
@@ -47,7 +47,6 @@ def train(args, seeds):
         f"dqn-PLR-{args.env_name}-{args.num_train_seeds}levels"
         + f"{'-PER' if args.PER else ''}"
         + f"{'-dueling' if args.dueling else ''}"
-        + f"{'-CQL' if args.cql else ''}"
         + f"{'-qrdqn' if args.qrdqn else ''}"
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
@@ -121,6 +120,7 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
+    start = time.time()
     for t in range(num_steps):
         if t < args.start_timesteps:
             action = (
@@ -197,8 +197,15 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
+            if args.per_seed_buffer:
+                proportion_levels_seen = replay_buffer.valid_buffers.sum() / len(replay_buffer.seeds)
+                wandb.log({"Proportion of Levels Seen": proportion_levels_seen}, step=t * args.num_processes)
             loss, grad_magnitude = agent.train(replay_buffer)
-            wandb.log({"Value Loss": loss, "Gradient magnitude": grad_magnitude}, step=t * args.num_processes)
+            t_ = time.time()
+            wandb.log(
+                {"Value Loss": loss, "Gradient magnitude": grad_magnitude, "Update Time": t_ - start},
+                step=t * args.num_processes,
+            )
 
         if (rollouts.step + 1) == rollouts.num_steps:
             obs_id = rollouts.obs[-1]
@@ -242,6 +249,7 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
+            print(f"Evaluation done at time {time.time() - start}")
             wandb.log(
                 {
                     "Test Evaluation Returns": mean_test_rewards,

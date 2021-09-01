@@ -23,11 +23,8 @@ from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-last_checkpoint_time = None
-
 
 def train(args, seeds):
-    global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device("cuda:0" if args.cuda else "cpu")
     if "cuda" in device.type:
@@ -35,6 +32,8 @@ def train(args, seeds):
 
     torch.set_num_threads(1)
 
+    os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
+    os.environ["WANB_MODE"] = "offline"
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
         project=args.wandb_project,
