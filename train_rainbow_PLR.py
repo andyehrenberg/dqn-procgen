@@ -90,7 +90,7 @@ def train(args, seeds):
     agent = DQNAgent(args, envs)
 
     if args.per_seed_buffer:
-        start_timesteps = warm_up(replay_buffer, agent, args)
+        start_timesteps = warm_up(replay_buffer, args)
         args.start_timesteps -= start_timesteps
 
     level_seeds = torch.zeros(args.num_processes)
