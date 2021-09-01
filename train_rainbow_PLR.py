@@ -201,7 +201,10 @@ def train(args, seeds):
         if (t + 1) % args.train_freq == 0 and t >= args.start_timesteps:
             if args.per_seed_buffer:
                 proportion_levels_seen = replay_buffer.valid_buffers.sum() / len(replay_buffer.seeds)
-                wandb.log({"Proportion of Levels Seen": proportion_levels_seen}, step=t * args.num_processes)
+                wandb.log(
+                    {"Proportion of Levels with Enough Transitions": proportion_levels_seen},
+                    step=t * args.num_processes,
+                )
             loss, grad_magnitude = agent.train(replay_buffer)
             t_ = time.time()
             wandb.log(
