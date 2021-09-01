@@ -5,6 +5,7 @@ from typing import List
 
 import numpy as np
 import torch
+import time
 
 import wandb
 from level_replay import utils
@@ -16,11 +17,8 @@ from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-last_checkpoint_time = None
-
 
 def train(args, seeds):
-    global last_checkpoint_time
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.device = torch.device("cuda:0" if args.cuda else "cpu")
     if "cuda" in args.device.type:
@@ -36,6 +34,8 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
+    os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
+    os.environ["WANB_MODE"] = "offline"
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
         project=args.wandb_project,
@@ -48,7 +48,6 @@ def train(args, seeds):
         f"dqn-{args.env_name}-{args.num_train_seeds}levels"
         + f"{'-PER' if args.PER else ''}"
         + f"{'-dueling' if args.dueling else ''}"
-        + f"{'-CQL' if args.cql else ''}"
         + f"{'-qrdqn' if args.qrdqn else ''}"
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
@@ -105,6 +104,7 @@ def train(args, seeds):
             -1.0 * (t - args.start_timesteps) / epsilon_decay
         )
 
+    start = time.time()
     for t in range(num_steps):
         if t % args.train_freq == 0:
             if agent.Q.noisy_layers:
@@ -279,6 +279,7 @@ def train(args, seeds):
                     seeds=seeds,
                 )
             )
+            print(f"Evaluation done at time {time.time() - start}")
             test_ppo_normalised_reward = ppo_normalise_reward(mean_test_rewards, args.env_name)
             train_ppo_normalised_reward = ppo_normalise_reward(mean_train_rewards, args.env_name)
             test_min_max_normalised_reward = min_max_normalise_reward(mean_test_rewards, args.env_name)
