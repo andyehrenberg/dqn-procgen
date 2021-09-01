@@ -194,9 +194,11 @@ class PLRBuffer:
     def _sample_unseen_level(self):
         w = self.unseen_seed_weights * self.valid_buffers
         if w.sum() == 0:
+            print("No valid unseen levels")
             if self.valid_buffers.sum() > 0:
                 return self._sample_replay_level()
             else:
+                print("No valid buffers")
                 return None
         sample_weights = w / w.sum()
 
