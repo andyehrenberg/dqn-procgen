@@ -16,6 +16,8 @@ from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
+os.environ["WANB_MODE"] = "offline"
 
 
 def train(args, seeds):
@@ -34,8 +36,6 @@ def train(args, seeds):
 
     utils.seed(args.seed)
 
-    os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
-    os.environ["WANB_MODE"] = "offline"
     wandb.init(
         settings=wandb.Settings(start_method="fork"),
         project=args.wandb_project,
