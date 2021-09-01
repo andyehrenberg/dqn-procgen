@@ -8,7 +8,7 @@ from level_replay.algo.buffer import Buffer
 @dataclass
 class LevelBufferConfig:
     batch_size = 32
-    memory_capacity = 15625
+    memory_capacity = 100
     device: str
     seeds: list
     ptr = 0
@@ -181,11 +181,8 @@ class PLRBuffer:
         if np.isclose(np.sum(sample_weights), 0):
             sample_weights = np.ones_like(sample_weights, dtype=np.float) / len(sample_weights)
 
-        while True:
-            seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
-            seed = self.seeds[seed_idx]
-            if self._is_valid_seed(seed):
-                break
+        seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
+        seed = self.seeds[seed_idx]
 
         self._update_staleness(seed_idx)
 
@@ -193,30 +190,14 @@ class PLRBuffer:
 
     def _sample_unseen_level(self):
         w = self.unseen_seed_weights * self.valid_buffers
-        if w.sum() == 0:
-            print("No valid unseen levels")
-            if self.valid_buffers.sum() > 0:
-                return self._sample_replay_level()
-            else:
-                print("No valid buffers")
-                return None
         sample_weights = w / w.sum()
 
-        while True:
-            seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
-            seed = self.seeds[seed_idx]
-            if self._is_valid_seed(seed):
-                break
+        seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
+        seed = self.seeds[seed_idx]
 
         self._update_staleness(seed_idx)
 
         return int(seed)
-
-    def _is_valid_seed(self, seed):
-        if self.valid_buffers[seed] == 1.0:
-            return True
-        else:
-            return False
 
     def sample(self):
         sub_batch = int(self.batch_size_per_seed)
@@ -255,8 +236,11 @@ class PLRBuffer:
 
         num_unseen = (self.unseen_seed_weights > 0).sum()
         proportion_seen = (len(self.seeds) - num_unseen) / len(self.seeds)
+        w = self.unseen_seed_weights * self.valid_buffers
 
         if self.replay_schedule == "fixed":
+            if w.sum() == 0:
+                return self._sample_replay_level()
             if proportion_seen >= self.rho:
                 # Sample replay level with fixed prob = 1 - nu OR if all levels seen
                 if np.random.rand() > self.nu or not proportion_seen < 1.0:
@@ -266,7 +250,9 @@ class PLRBuffer:
             return self._sample_unseen_level()
 
         else:  # Default to proportionate schedule
-            if proportion_seen >= self.rho and np.random.rand() < proportion_seen:
+            if w.sum() == 0:
+                return self._sample_replay_level()
+            if (proportion_seen >= self.rho and np.random.rand() < proportion_seen) or w.sum() == 0:
                 return self._sample_replay_level()
             else:
                 return self._sample_unseen_level()
