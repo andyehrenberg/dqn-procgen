@@ -121,7 +121,10 @@ def train(args, seeds):
         )
 
     start = time.time()
+    print("Beginning training")
     for t in range(num_steps):
+        if t == args.start_timesteps:
+            print("Done initializing buffer")
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
