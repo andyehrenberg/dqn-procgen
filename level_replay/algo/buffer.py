@@ -275,6 +275,7 @@ class PLRBuffer(AbstractBuffer):
         self.partial_seed_scores = np.zeros((self.num_actors, len(self._seeds)), dtype=np.float)
         self.partial_seed_steps = np.zeros((self.num_actors, len(self._seeds)), dtype=np.int64)
         self.seed_staleness = np.array([0.0] * len(self._seeds), dtype=np.float)
+        self.staleness_counter = np.array([0] * len(self._seeds), dtype=np.uint8)
 
         self.next_seed_index = 0
 
@@ -324,7 +325,7 @@ class PLRBuffer(AbstractBuffer):
 
     def sample(self):
         ind = np.random.randint(0, self.size, size=self.batch_size)
-        weights = self._get_weights(ind)
+        weights = self._get_weights2(ind)
 
         return (
             torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
@@ -345,6 +346,44 @@ class PLRBuffer(AbstractBuffer):
             weights.append(weight)
 
         weights = torch.FloatTensor(weights).to(self.device).reshape(-1, 1)
+
+        return weights
+
+    def _get_weights2(self, ind):
+        seeds = self.seeds[ind]
+        all_weights = self.sample_weights()
+        batch_weights = []
+        for seed in seeds:
+            self.staleness_counter[seed] += 1
+            if self.staleness_counter[seed] == 256:
+                self._update_staleness(seed)
+                self.staleness_counter[seed] = 0
+            weight = all_weights[seed]
+            batch_weights.append(weight)
+
+        batch_weights = torch.FloatTensor(batch_weights).to(self.device).reshape(-1, 1)
+
+        return batch_weights
+
+    def sample_weights(self):
+        weights = self._score_transform(self.score_transform, self.temperature, self.seed_scores)
+        weights = weights * (1 - self.unseen_seed_weights)  # zero out unseen levels
+
+        z = np.sum(weights)
+        if z > 0:
+            weights /= z
+
+        staleness_weights = 0
+        if self.staleness_coef > 0:
+            staleness_weights = self._score_transform(
+                self.staleness_transform, self.staleness_temperature, self.seed_staleness
+            )
+            staleness_weights = staleness_weights * (1 - self.unseen_seed_weights)
+            z = np.sum(staleness_weights)
+            if z > 0:
+                staleness_weights /= z
+
+            weights = (1 - self.staleness_coef) * weights + self.staleness_coef * staleness_weights
 
         return weights
 
@@ -450,6 +489,32 @@ class PLRBuffer(AbstractBuffer):
         if self.staleness_coef > 0:
             self.seed_staleness = self.seed_staleness + 1
             self.seed_staleness[selected_idx] = 0
+
+    def _score_transform(self, transform, temperature, scores):
+        if transform == "constant":
+            weights = np.ones_like(scores)
+        if transform == "max":
+            weights = np.zeros_like(scores)
+            scores = scores[:]
+            scores[self.unseen_seed_weights > 0] = -float("inf")  # only argmax over seen levels
+            argmax = np.random.choice(np.flatnonzero(np.isclose(scores, scores.max())))
+            weights[argmax] = 1.0
+        elif transform == "eps_greedy":
+            weights = np.zeros_like(scores)
+            weights[scores.argmax()] = 1.0 - self.eps
+            weights += self.eps / len(self.seeds)
+        elif transform == "rank":
+            temp = np.flip(scores.argsort())
+            ranks = np.empty_like(temp)
+            ranks[temp] = np.arange(len(temp)) + 1
+            weights = 1 / ranks ** (1.0 / temperature)
+        elif transform == "power":
+            eps = 0 if self.staleness_coef > 0 else 1e-3
+            weights = (np.array(scores) + eps) ** (1.0 / temperature)
+        elif transform == "softmax":
+            weights = np.exp(np.array(scores) / temperature)
+
+        return weights
 
 
 class AtariBuffer:
