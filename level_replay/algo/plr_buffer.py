@@ -24,15 +24,15 @@ class PLRBuffer:
         self.action_space = env.action_space.n
         self.num_actors = args.num_processes
         self.strategy = "value_l1"
-        self.replay_schedule = "fixed"
-        self.score_transform = "power"
+        self.replay_schedule = "proportionate"
+        self.score_transform = "rank"
         self.staleness_transform = "power"
-        self.temperature = 1.0
+        self.temperature = 0.1
         self.eps = 0.05
-        self.rho = 0.2
+        self.rho = 1.0
         self.nu = 0.5
         self.alpha = 1.0
-        self.staleness_coef = 0
+        self.staleness_coef = 0.1
         self.staleness_temperature = 1.0
 
         self.num_seeds_in_update = 64
