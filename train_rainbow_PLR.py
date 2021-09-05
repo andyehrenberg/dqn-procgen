@@ -238,7 +238,8 @@ def train(args, seeds):
                     "Normalized PLR Seed Weights": wandb.plot.bar(
                         table, "Seed", "Weight", title="Normalized PLR Seed Weights"
                     )
-                }
+                },
+                step=t * args.num_processes,
             )
 
         if t >= args.start_timesteps and (t + 1) % args.eval_freq == 0:
