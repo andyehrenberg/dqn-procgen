@@ -82,6 +82,7 @@ parser.add_argument(
 )
 
 # Level Replay parameters
+parser.add_argument("--num_steps", type=int, default=256, help="number of steps in rollout for plr scores")
 parser.add_argument("--level_replay_alpha", type=float, default=1.0)
 parser.add_argument("--level_replay_eps", type=float, default=0.05)
 parser.add_argument("--level_replay_nu", type=float, default=0.5)
