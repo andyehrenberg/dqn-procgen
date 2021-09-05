@@ -62,12 +62,12 @@ parser.add_argument("--full_train_distribution", action="store_true", help="Trai
 parser.add_argument(
     "--level_replay_score_transform",
     type=str,
-    default="softmax",
+    default="rank",
     choices=["constant", "max", "eps_greedy", "rank", "power", "softmax"],
     help="Level replay scoring strategy",
 )
 parser.add_argument(
-    "--level_replay_temperature", type=float, default=1.0, help="Level replay scoring strategy"
+    "--level_replay_temperature", type=float, default=0.1, help="Level replay scoring strategy"
 )
 parser.add_argument(
     "--level_replay_strategy",
@@ -108,7 +108,7 @@ parser.add_argument(
     help="Probability of sampling a new level instead of a replay level.",
 )
 parser.add_argument("--level_replay_alpha", type=float, default=1.0, help="Level score EWA smoothing factor")
-parser.add_argument("--staleness_coef", type=float, default=0.0, help="Staleness weighing")
+parser.add_argument("--staleness_coef", type=float, default=0.1, help="Staleness weighing")
 parser.add_argument(
     "--staleness_transform",
     type=str,

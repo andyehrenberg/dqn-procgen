@@ -108,6 +108,7 @@ def train(args, seeds):
     state_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     reward_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(args.num_processes)]
+    expect_new_seed: List[bool] = [False for _ in range(args.num_processes)]
 
     num_steps = int(args.T_max // args.num_processes)
 
@@ -146,11 +147,12 @@ def train(args, seeds):
             if "bad_transition" in info.keys():
                 print("Bad transition")
             if level_sampler:
-                level_seed = info["level_seed"]
-                if level_seeds[i][0] != level_seed:
+                if expect_new_seed[i]:
+                    level_seed = info["level_seed"]
                     level_seeds[i][0] = level_seed
                     if args.log_per_seed_stats:
                         new_episode(value, level_seed, i, step=t * args.num_processes)
+                    expect_new_seed[i] = False
             state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
@@ -175,6 +177,7 @@ def train(args, seeds):
                             np.uint8(done[i]),
                             level_seeds[i],
                         )
+                    expect_new_seed[i] = True
             if "episode" in info.keys():
                 episode_reward = info["episode"]["r"]
                 wandb.log(
