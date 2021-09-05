@@ -68,17 +68,22 @@ class DQNAgent(object):
         # Number of training iterations
         self.iterations = 0
 
-    def select_action(self, state, eval=False):
+    def select_action(self, state, eps=0.1, eval=False):
         with torch.no_grad():
             q = self.Q(state)
             action = q.argmax(1).reshape(-1, 1)
-            return action, q.max(1)[0]
+            max_q = q.max(1)[0]
+            mean_q = q.mean(1)
+            v = (1 - eps) * max_q + eps * mean_q
+            return action, v
 
-    def get_value(self, state):
+    def get_value(self, state, eps=0.1):
         with torch.no_grad():
             q = self.Q(state)
-            value = q.max(1)[0]
-            return value
+            max_q = q.max(1)[0]
+            mean_q = q.mean(1)
+            v = (1 - eps) * max_q + eps * mean_q
+            return v
 
     def advantage(self, state, eps):
         q = self.Q(state)
