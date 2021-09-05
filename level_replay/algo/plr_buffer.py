@@ -8,7 +8,7 @@ from level_replay.algo.buffer import Buffer
 @dataclass
 class LevelBufferConfig:
     batch_size = 32
-    memory_capacity = 5000
+    memory_capacity = 15000
     device: str
     seeds: list
     ptr = 0
