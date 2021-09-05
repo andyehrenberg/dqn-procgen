@@ -19,8 +19,7 @@ from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward
 
 os.environ["OMP_NUM_THREADS"] = "1"
-# os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
-# os.environ["WANB_MODE"] = "offline"
+os.environ["WANDB_API_KEY"] = "87729c22de8950e15c322e25c12a264d019abd87"
 
 
 def train(args, seeds):
