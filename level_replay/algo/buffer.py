@@ -326,6 +326,7 @@ class PLRBuffer(AbstractBuffer):
     def sample(self):
         ind = np.random.randint(0, self.size, size=self.batch_size)
         weights = self._get_weights2(ind)
+        print(f"Importance weights: {weights/weights.max()}")
 
         return (
             torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
@@ -352,14 +353,14 @@ class PLRBuffer(AbstractBuffer):
     def _get_weights2(self, ind):
         seeds = self.seeds[ind]
         all_weights = self.sample_weights()
-        batch_weights = []
-        for seed in seeds:
+        batch_weights = np.zeros(len(seeds))
+        for idx, seed in enumerate(seeds):
             self.staleness_counter[seed] += 1
             if self.staleness_counter[seed] == 256:
                 self._update_staleness(seed)
                 self.staleness_counter[seed] = 0
             weight = all_weights[seed]
-            batch_weights.append(weight)
+            batch_weights[idx] = weight ** -0.4 if weight > 0 else 0
 
         batch_weights = torch.FloatTensor(batch_weights).to(self.device).reshape(-1, 1)
 
@@ -507,7 +508,7 @@ class PLRBuffer(AbstractBuffer):
             temp = np.flip(scores.argsort())
             ranks = np.empty_like(temp)
             ranks[temp] = np.arange(len(temp)) + 1
-            weights = 1 / ranks ** (1.0 / temperature)
+            weights = 1 / ranks ** 0.5  # (1.0 / temperature)
         elif transform == "power":
             eps = 0 if self.staleness_coef > 0 else 1e-3
             weights = (np.array(scores) + eps) ** (1.0 / temperature)
