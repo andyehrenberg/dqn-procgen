@@ -8,7 +8,7 @@ import torch
 
 import wandb
 from level_replay import utils
-from level_replay.algo.buffer import make_buffer
+from level_replay.algo.buffer import make_buffer, RolloutStorage
 from level_replay.algo.policy import DQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
@@ -49,6 +49,8 @@ def train(args, seeds):
         + f"{'-qrdqn' if args.qrdqn else ''}"
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
+        + f"{'-drq' if args.drq else ''}"
+        + f"{'-autodrq' if args.autodrq else ''}"
     )
 
     num_levels = 1
@@ -80,6 +82,11 @@ def train(args, seeds):
     else:
         state = envs.reset()
     level_seeds = level_seeds.unsqueeze(-1)
+
+    if args.autodrq:
+        rollouts = RolloutStorage(256, args.num_processes, envs.observation_space.shape, envs.action_space)
+        rollouts.obs[0].copy_(state)
+        rollouts.to(args.device)
 
     estimates = [0 for _ in range(args.num_train_seeds)]
     returns = [0 for _ in range(args.num_train_seeds)]
@@ -137,6 +144,7 @@ def train(args, seeds):
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
+        masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
 
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():
@@ -205,7 +213,19 @@ def train(args, seeds):
                         step=t * args.num_processes,
                     )
 
+        if args.autodrq:
+            rollouts.insert(next_state, action, value.unsqueeze(1), torch.Tensor(reward), masks, level_seeds)
+
         state = next_state
+
+        if args.autodrq and (t + 1) % 256 == 0:
+            with torch.no_grad():
+                obs_id = rollouts.obs[-1]
+                next_value = agent.get_value(obs_id).unsqueeze(1).detach()
+
+            rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
+            replay_buffer.update_ucb_values(rollouts)
+            rollouts.after_update()
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:

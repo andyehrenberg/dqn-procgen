@@ -2,8 +2,13 @@ import numpy as np
 import torch
 import math
 import random
+import kornia
+import torch.nn as nn
+from collections import deque
+from typing import List
 
 from level_replay.algo.binary_heap import BinaryHeap
+from level_replay import data_augs
 
 
 class AbstractBuffer:
@@ -138,6 +143,137 @@ class Buffer(AbstractBuffer):
             return seed2weight
         else:
             return {seed: 1.0 for seed in self.all_seeds}
+
+
+class AugBuffer(Buffer):
+    def __init__(self, args, env):
+        super(AugBuffer, self).__init__(args, env)
+        self.aug_trans = nn.Sequential(
+            nn.ReplicationPad2d(4),
+            kornia.augmentation.RandomCrop(
+                (env.observation_space.shape[-1], env.observation_space.shape[-1])
+            ),
+        )
+
+        def f():
+            pass
+
+        self.aug_trans.change_randomization_params_all = f
+
+    def sample(self):
+        if self.prioritized:
+            ind = self.tree.sample(self.batch_size)
+            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
+            weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
+            self.beta = min(self.beta + self.beta_stepper, 1)
+        else:
+            ind = np.random.randint(0, self.size, size=self.batch_size)
+            weights = torch.FloatTensor([1]).to(self.device)
+
+        state = self.state[ind]
+        next_state = self.next_state[ind]
+        state_aug = state.copy()
+        next_state_aug = next_state.copy()
+
+        state = torch.as_tensor(state, device=self.device).float() / 255.0
+        next_state = torch.as_tensor(next_state, device=self.device).float() / 255.0
+        state_aug = torch.as_tensor(state_aug, device=self.device).float() / 255.0
+        next_state_aug = torch.as_tensor(next_state_aug, device=self.device).float() / 255.0
+
+        state = self.aug_trans(state)
+        next_state = self.aug_trans(next_state)
+
+        state_aug = self.aug_trans(state_aug)
+        next_state_aug = self.aug_trans(next_state_aug)
+
+        return (
+            state,
+            torch.LongTensor(self.action[ind]).to(self.device),
+            next_state,
+            torch.FloatTensor(self.reward[ind]).to(self.device),
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        )
+
+
+class AutoAugBuffer(Buffer):
+    def __init__(self, args, env):
+        super(AutoAugBuffer, self).__init__(args, env)
+        aug_to_func = {
+            "crop": data_augs.Crop,
+            "random-conv": data_augs.RandomConv,
+            "grayscale": data_augs.Grayscale,
+            "flip": data_augs.Flip,
+            "rotate": data_augs.Rotate,
+            "cutout": data_augs.Cutout,
+            "cutout-color": data_augs.CutoutColor,
+            "color-jitter": data_augs.ColorJitter,
+        }
+        self.ucb_coef = 0.1
+        self.aug_list = [aug_to_func[t](batch_size=self.batch_size) for t in list(aug_to_func.keys())]
+        self.aug_idx = 0
+        self.aug_trans = self.aug_list[self.aug_idx]
+        self.aug_counts = np.zeros((len(self.aug_list)))
+        self.aug_q = np.zeros((len(self.aug_list)))
+        self.aug_returns: List[deque] = [deque(maxlen=10)]
+        self.total_num = 1
+
+    def sample(self):
+        if self.prioritized:
+            ind = self.tree.sample(self.batch_size)
+            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
+            weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
+            self.beta = min(self.beta + self.beta_stepper, 1)
+        else:
+            ind = np.random.randint(0, self.size, size=self.batch_size)
+            weights = torch.FloatTensor([1]).to(self.device)
+
+        state = self.state[ind]
+        next_state = self.next_state[ind]
+        state_aug = state.copy()
+        next_state_aug = next_state.copy()
+
+        state = torch.as_tensor(state, device=self.device).float() / 255.0
+        next_state = torch.as_tensor(next_state, device=self.device).float() / 255.0
+        state_aug = torch.as_tensor(state_aug, device=self.device).float() / 255.0
+        next_state_aug = torch.as_tensor(next_state_aug, device=self.device).float() / 255.0
+
+        state_aug = self.aug_trans.do_augmentation(state_aug)
+        next_state_aug = self.aug_trans.do_augmentation(next_state_aug)
+
+        return (
+            state,
+            torch.LongTensor(self.action[ind]).to(self.device),
+            next_state,
+            torch.FloatTensor(self.reward[ind]).to(self.device),
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        )
+
+    def select_aug(self):
+        ucb = self.aug_q + self.ucb_coef * np.sqrt(self.total_num / self.aug_counts)
+        argmax = ucb.argmax()
+        self.aug_counts[argmax] += 1
+        self.aug_idx = argmax
+        self.aug_trans = self.aug_list[self.aug_idx]
+
+    def add_reward(self, reward):
+        self.aug_returns[self.aug_idx].append(reward)
+        self.aug_q[self.aug_idx] = np.mean(self.aug_returns[self.aug_idx])
+
+    def update_ucb_values(self, rollouts):
+        self.total_num += 1
+        self.aug_counts[self.aug_idx] += 1
+        self.aug_returns[self.aug_idx].append(rollouts.returns.mean().item())
+        self.aug_q[self.aug_idx] = np.mean(self.aug_returns[self.aug_idx])
 
 
 class RankBuffer(AbstractBuffer):
@@ -326,7 +462,6 @@ class PLRBuffer(AbstractBuffer):
     def sample(self):
         ind = np.random.randint(0, self.size, size=self.batch_size)
         weights = self._get_weights2(ind)
-        print(f"Importance weights: {weights/weights.max()}")
 
         return (
             torch.FloatTensor(self.state[ind]).to(self.device) / 255.0,
@@ -723,4 +858,8 @@ def make_buffer(args, env, atari=False):
         return AtariBuffer(args, env)
     if args.rank_based_PER:
         return RankBuffer(args, env)
+    if args.autodrq:
+        return AutoAugBuffer(args, env)
+    if args.drq:
+        return AugBuffer(args, env)
     return Buffer(args, env)

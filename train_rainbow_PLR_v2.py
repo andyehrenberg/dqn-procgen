@@ -9,9 +9,8 @@ import wandb
 import time
 
 from level_replay import utils
-from level_replay.algo.buffer import PLRBuffer as PLRBuffer1
-from level_replay.algo.buffer import RolloutStorage
-from level_replay.algo.plr_buffer import PLRBuffer as PLRBuffer2
+from level_replay.algo.buffer import make_buffer, RolloutStorage
+from level_replay.algo.plr_buffer import PLRBufferV2
 from level_replay.algo.policy import DQNAgent
 from level_replay.algo.plr_utils import warm_up
 from level_replay.dqn_args import parser
@@ -56,7 +55,7 @@ def train(args, seeds):
     num_levels = 1
     level_sampler_args = dict(
         num_actors=args.num_processes,
-        strategy="random",
+        strategy=args.level_replay_strategy,
         replay_schedule=args.level_replay_schedule,
         score_transform=args.level_replay_score_transform,
         temperature=args.level_replay_temperature,
@@ -83,15 +82,14 @@ def train(args, seeds):
     )
 
     if args.per_seed_buffer:
-        replay_buffer = PLRBuffer2(args, envs)
-    else:
-        replay_buffer = PLRBuffer1(args, envs)
-
-    agent = DQNAgent(args, envs)
-
-    if args.per_seed_buffer:
+        replay_buffer = PLRBufferV2(args, envs)
+        replay_buffer.get_level_sampler(level_sampler)
         start_timesteps = warm_up(replay_buffer, args)
         args.start_timesteps -= start_timesteps
+    else:
+        replay_buffer = make_buffer(args, envs)
+
+    agent = DQNAgent(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
@@ -226,14 +224,18 @@ def train(args, seeds):
 
             wandb.log({"Mean Advantage": mean_advs}, step=t * args.num_processes)
 
-            replay_buffer.update_with_rollouts(rollouts)
+            if level_sampler:
+                level_sampler.update_with_rollouts(rollouts)
 
             rollouts.after_update()
 
-            replay_buffer.after_update()
+            if level_sampler:
+                level_sampler.after_update()
+
+            rollouts.after_update()
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
-            count_data = [[seed, weight] for (seed, weight) in enumerate(replay_buffer.seed_scores)]
+            count_data = [[seed, weight] for (seed, weight) in enumerate(level_sampler.seed_scores)]
             total_weight = sum([i[1] for i in count_data])
             count_data = [[i[0], i[1] / total_weight] for i in count_data]
             table = wandb.Table(data=count_data, columns=["Seed", "Weight"])
