@@ -291,7 +291,7 @@ class VecPyTorchProcgen(VecEnvWrapper):
             obs = obs.transpose(0, 3, 1, 2)
         obs = torch.from_numpy(obs).float().to(self.device) / 255.0
         # torch.from_numpy(reward).unsqueeze(dim=1).float()
-        reward = np.expand_dims(reward.astype(np.float), 1)
+        reward = np.expand_dims(reward.astype(float), 1)
 
         return obs, reward, done, info
 
