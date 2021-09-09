@@ -506,7 +506,7 @@ class DQNLevelSampler:
         sample_weights = self.sample_weights()
 
         if np.isclose(np.sum(sample_weights), 0):
-            sample_weights = np.ones_like(sample_weights, dtype=np.float) / len(sample_weights)
+            sample_weights = np.ones_like(sample_weights, dtype=float) / len(sample_weights)
 
         seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
         seed = self.seeds[seed_idx]
