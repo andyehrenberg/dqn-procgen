@@ -242,11 +242,8 @@ class AutoAugBuffer(Buffer):
         state_aug = torch.as_tensor(state_aug, device=self.device).float() / 255.0
         next_state_aug = torch.as_tensor(next_state_aug, device=self.device).float() / 255.0
 
-        state = self.aug_trans(state)
-        next_state = self.aug_trans(next_state)
-
-        state_aug = self.aug_trans(state_aug)
-        next_state_aug = self.aug_trans(next_state_aug)
+        state_aug = self.aug_trans.do_augmentation(state_aug)
+        next_state_aug = self.aug_trans.do_augmentation(next_state_aug)
 
         return (
             state,

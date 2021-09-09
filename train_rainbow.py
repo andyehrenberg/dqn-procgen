@@ -114,9 +114,6 @@ def train(args, seeds):
         if t % args.train_freq == 0:
             if agent.Q.noisy_layers:
                 agent.Q.reset_noise()
-        state_to_add = state.copy()
-        if args.autodrq:
-            state = replay_buffer.aug_trans(state)
 
         if t < args.start_timesteps:
             action = (
@@ -159,7 +156,7 @@ def train(args, seeds):
                     if args.log_per_seed_stats:
                         new_episode(value, estimates, level_seed, i, step=t * args.num_processes)
                     expect_new_seed[i] = False
-            state_deque[i].append(state_to_add[i])
+            state_deque[i].append(state[i])
             reward_deque[i].append(reward[i])
             action_deque[i].append(action[i])
             if len(state_deque[i]) == args.multi_step or done[i]:
@@ -223,7 +220,7 @@ def train(args, seeds):
 
         if args.autodrq and (t + 1) % 256 == 0:
             with torch.no_grad():
-                obs_id = replay_buffer.aug_trans(rollouts.obs[-1])
+                obs_id = rollouts.obs[-1]
                 next_value = agent.get_value(obs_id).unsqueeze(1).detach()
 
             rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
