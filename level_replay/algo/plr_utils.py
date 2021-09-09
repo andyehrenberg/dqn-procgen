@@ -59,7 +59,7 @@ def warm_up(replay_buffer, args):
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
-        num_steps += args.seeds
+        num_steps += len(args.seeds)
 
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():
