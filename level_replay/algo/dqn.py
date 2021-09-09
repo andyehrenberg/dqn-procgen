@@ -8,6 +8,20 @@ from torch.nn import functional as F
 from torch.distributions import Categorical
 
 
+def init(module, weight_init, bias_init, gain=1):
+    weight_init(module.weight.data, gain=gain)
+    bias_init(module.bias.data)
+    return module
+
+
+def init_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
+
+
+def init_relu_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), nn.init.calculate_gain("relu"))
+
+
 def apply_init_(modules):
     for m in modules:
         if isinstance(m, nn.Conv2d):
@@ -506,3 +520,20 @@ class Conv_Q(nn.Module):
         q = F.relu(self.c3(q))
         q = F.relu(self.l1(q.reshape(-1, 3136)))
         return self.l2(q)
+
+
+class OrderClassifier(nn.Module):
+    def __init__(self):
+        super(OrderClassifier, self).__init__()
+        self.main = nn.Sequential(
+            Flatten(),
+            init_relu_(nn.Linear(1024, 16)),
+            nn.ReLU(),
+            init_(nn.Linear(16, 2)),
+            nn.Softmax(dim=1),
+        )
+        self.train()
+
+    def forward(self, emb):
+        x = self.main(emb)
+        return x

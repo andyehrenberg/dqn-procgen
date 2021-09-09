@@ -50,6 +50,7 @@ def train(args, seeds):
         + f"{'-qrdqn' if args.qrdqn else ''}"
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-noisylayers' if args.noisy_layers else ''}"
+        + f"{'-drq' if args.drq else ''}"
     )
 
     num_levels = 1

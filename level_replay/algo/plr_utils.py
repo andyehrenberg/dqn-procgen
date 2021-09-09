@@ -48,9 +48,9 @@ def warm_up(replay_buffer, args):
     reward_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(len(args.seeds))]
     action_deque: List[deque] = [deque(maxlen=args.multi_step) for _ in range(len(args.seeds))]
 
-    num_steps = 50
+    num_steps = 0
 
-    for _ in range(num_steps):
+    while replay_buffer.valid_buffers.sum() < 1:
         action = (
             torch.LongTensor([envs.action_space.sample() for _ in range(len(args.seeds))])
             .reshape(-1, 1)
@@ -59,6 +59,7 @@ def warm_up(replay_buffer, args):
 
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
+        num_steps += args.seeds
 
         for i, info in enumerate(infos):
             if "bad_transition" in info.keys():

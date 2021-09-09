@@ -50,11 +50,6 @@ class DQNAgent(object):
                 i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)
             }
 
-        self.cql = args.cql
-
-        if self.cql:
-            self._alpha = 1.0
-
         if self.Q.c51:
             self.loss = self._loss_c51
         elif self.Q.qrdqn:
@@ -62,6 +57,8 @@ class DQNAgent(object):
             self.kappa = 1.0
             self.cumulative_density = np.array((2 * np.arange(self.Q.atoms) + 1) / (2.0 * self.Q.atoms))
             self.cumulative_density = torch.from_numpy(self.cumulative_density).to(self.device)
+        elif args.drq or args.autodrq:
+            self.loss = self._loss_aug
         else:
             self.loss = self._loss
 
@@ -125,9 +122,6 @@ class DQNAgent(object):
 
         loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
         priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
-
-        if self.cql:
-            loss += self._conservative_loss(state, action)
 
         return ind, loss, priority
 
@@ -208,13 +202,45 @@ class DQNAgent(object):
 
         return ind, loss, priority
 
-    def _conservative_loss(self, state, action):
-        policy_values = self.Q(state)
-        logsumexp = torch.logsumexp(policy_values, dim=1, keepdim=True)
+    def _loss_aug(self, replay_buffer):
+        (
+            state,
+            action,
+            next_state,
+            reward,
+            not_done,
+            seeds,
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        ) = replay_buffer.sample()
 
-        data_values = policy_values.gather(1, action)
+        self.update_seed_weights(seeds, weights)
 
-        return self._alpha * (logsumexp - data_values).mean()
+        with torch.no_grad():
+            next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
+                1, next_action
+            )
+
+            next_action_aug = self.Q(next_state_aug).argmax(1).reshape(-1, 1)
+            target_Q_aug = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(
+                next_state_aug
+            ).gather(1, next_action_aug)
+
+            target_Q = (target_Q + target_Q_aug) / 2
+
+        current_Q = self.Q(state).gather(1, action)
+        current_Q_aug = self.Q(state_aug).gather(1, action)
+
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
+        loss += (weights * F.smooth_l1_loss(current_Q_aug, target_Q, reduction="none")).mean()
+        priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+
+        replay_buffer.aug_trans.change_randomization_params_all()
+
+        return ind, loss, priority
 
     def update_seed_weights(self, seeds, weights):
         if self.track_seed_weights:

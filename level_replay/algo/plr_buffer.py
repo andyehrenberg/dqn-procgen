@@ -8,7 +8,7 @@ from level_replay.algo.buffer import Buffer
 @dataclass
 class LevelBufferConfig:
     batch_size = 32
-    memory_capacity = 15000
+    memory_capacity = 5000
     device: str
     seeds: list
     ptr = 0
@@ -304,3 +304,61 @@ class PLRBuffer:
             weights = np.exp(np.array(scores) / temperature)
 
         return weights
+
+
+class PLRBufferV2:
+    def __init__(self, args, env):
+        self.device = args.device
+        seeds = args.seeds
+        self.seeds = np.array(seeds, dtype=np.int64)
+        self.obs_space = env.observation_space.shape
+        self.action_space = env.action_space.n
+        self.num_actors = args.num_processes
+
+        self.num_seeds_in_update = 16
+        self.batch_size_per_seed = 32
+
+        buffer_config = LevelBufferConfig(self.device, self.seeds)
+        buffer_config.batch_size = self.batch_size_per_seed
+
+        self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
+        self.valid_buffers = np.array([0.0] * len(self.seeds), dtype=np.float)
+
+    def add(self, state, action, next_state, reward, done, seed):
+        self.buffers[seed.item()].add(state, action, next_state, reward, done, seed)
+        if self.buffers[seed.item()].size > self.batch_size_per_seed:
+            self.valid_buffers[seed.item()] = 1.0
+
+    def get_level_sampler(self, level_sampler):
+        self.level_sampler = level_sampler
+
+    def sample(self):
+        sub_batch = int(self.batch_size_per_seed)
+        batch_size = self.num_seeds_in_update * self.batch_size_per_seed
+        state = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        action = torch.empty((batch_size, 1), dtype=torch.long, device=self.device)
+        next_state = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        reward = torch.empty((batch_size, 1), dtype=torch.float, device=self.device)
+        not_done = torch.empty((batch_size, 1), dtype=torch.float, device=self.device)
+        seeds = torch.empty((batch_size, 1), dtype=torch.long, device=self.device)
+        levels = self._sample_levels()
+        for i, seed in enumerate(levels):
+            state_, action_, next_state_, reward_, not_done_, seeds_, _, _ = self.buffers[seed].sample()
+            state[i * sub_batch : (i + 1) * sub_batch] = state_
+            action[i * sub_batch : (i + 1) * sub_batch] = action_
+            next_state[i * sub_batch : (i + 1) * sub_batch] = next_state_
+            reward[i * sub_batch : (i + 1) * sub_batch] = reward_
+            not_done[i * sub_batch : (i + 1) * sub_batch] = not_done_
+            seeds[i * sub_batch : (i + 1) * sub_batch] = seeds_
+
+        return state, action, next_state, reward, not_done, seeds, 0, 1
+
+    def _sample_levels(self):
+        prev_transform = self.level_sampler.score_transform
+        self.level_sampler.score_transform = "power"
+        weights = self.level_sampler.sample_weights() * self.valid_buffers
+        weights = weights / weights.sum()
+        levels = np.random.choice(self.seeds, self.num_seeds_in_update, p=weights)
+        self.level_sampler.score_transform = prev_transform
+
+        return levels
