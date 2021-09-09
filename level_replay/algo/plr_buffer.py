@@ -354,11 +354,14 @@ class PLRBufferV2:
         return state, action, next_state, reward, not_done, seeds, 0, 1
 
     def _sample_levels(self):
-        prev_transform = self.level_sampler.score_transform
-        self.level_sampler.score_transform = "power"
-        weights = self.level_sampler.sample_weights() * self.valid_buffers
-        weights = weights / weights.sum()
+        # prev_transform = self.level_sampler.score_transform
+        # self.level_sampler.score_transform = "power"
+        sample_weights = self.level_sampler.sample_weights()
+        weights = sample_weights * self.valid_buffers
+        if np.isclose(np.sum(weights), 0):
+            weights = np.ones_like(weights, dtype=float) * self.valid_buffers
+        weights = weights / np.sum(weights)
         levels = np.random.choice(self.seeds, self.num_seeds_in_update, p=weights)
-        self.level_sampler.score_transform = prev_transform
+        # self.level_sampler.score_transform = prev_transform
 
         return levels
