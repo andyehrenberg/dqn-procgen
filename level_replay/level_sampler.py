@@ -45,10 +45,10 @@ class LevelSampler:
         self._init_seed_index(seeds)
 
         self.unseen_seed_weights = np.array([1.0] * len(seeds))
-        self.seed_scores = np.array([0.0] * len(seeds), dtype=np.float)
-        self.partial_seed_scores = np.zeros((num_actors, len(seeds)), dtype=np.float)
+        self.seed_scores = np.array([0.0] * len(seeds), dtype=float)
+        self.partial_seed_scores = np.zeros((num_actors, len(seeds)), dtype=float)
         self.partial_seed_steps = np.zeros((num_actors, len(seeds)), dtype=np.int64)
-        self.seed_staleness = np.array([0.0] * len(seeds), dtype=np.float)
+        self.seed_staleness = np.array([0.0] * len(seeds), dtype=float)
 
         self.next_seed_index = 0  # Only used for sequential strategy
 
@@ -220,7 +220,7 @@ class LevelSampler:
         sample_weights = self.sample_weights()
 
         if np.isclose(np.sum(sample_weights), 0):
-            sample_weights = np.ones_like(sample_weights, dtype=np.float) / len(sample_weights)
+            sample_weights = np.ones_like(sample_weights, dtype=float) / len(sample_weights)
 
         seed_idx = np.random.choice(range(len(self.seeds)), 1, p=sample_weights)[0]
         seed = self.seeds[seed_idx]
