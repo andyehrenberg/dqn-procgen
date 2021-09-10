@@ -353,15 +353,17 @@ class DQNLevelSampler:
         self.staleness_coef = staleness_coef
         self.staleness_transform = staleness_transform
         self.staleness_temperature = staleness_temperature
+        self.has_sampled_weights = False
 
         # Track seeds and scores as in np arrays backed by shared memory
         self._init_seed_index(seeds)
 
         self.unseen_seed_weights = np.array([1.0] * len(seeds))
-        self.seed_scores = np.array([0.0] * len(seeds), dtype=np.float)
-        self.partial_seed_scores = np.zeros((num_actors, len(seeds)), dtype=np.float)
+        self.seed_scores = np.array([0.0] * len(seeds), dtype=float)
+        self.partial_seed_scores = np.zeros((num_actors, len(seeds)), dtype=float)
         self.partial_seed_steps = np.zeros((num_actors, len(seeds)), dtype=np.int64)
-        self.seed_staleness = np.array([0.0] * len(seeds), dtype=np.float)
+        self.seed_staleness = np.array([0.0] * len(seeds), dtype=float)
+        self.probs = np.ones((len(seeds)), dtype=float) / len(seeds)
 
         self.next_seed_index = 0  # Only used for sequential strategy
 
@@ -387,6 +389,8 @@ class DQNLevelSampler:
             raise ValueError(f"Unsupported strategy, {self.strategy}")
 
         self._update_with_rollouts(rollouts, score_function)
+
+        self.sample_weights()
 
     def update_seed_score(self, actor_index, seed_idx, score, num_steps):
         score = self._partial_update_seed_score(actor_index, seed_idx, score, num_steps, done=True)
@@ -576,6 +580,9 @@ class DQNLevelSampler:
                 staleness_weights /= z
 
             weights = (1 - self.staleness_coef) * weights + self.staleness_coef * staleness_weights
+
+        self.probs = weights
+        self.has_sampled_weights = True
 
         return weights
 

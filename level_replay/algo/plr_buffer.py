@@ -8,7 +8,7 @@ from level_replay.algo.buffer import Buffer
 @dataclass
 class LevelBufferConfig:
     batch_size = 32
-    memory_capacity = 5000
+    memory_capacity = 500  # 0
     device: str
     seeds: list
     ptr = 0
@@ -315,8 +315,8 @@ class PLRBufferV2:
         self.action_space = env.action_space.n
         self.num_actors = args.num_processes
 
-        self.num_seeds_in_update = 16
-        self.batch_size_per_seed = 32
+        self.num_seeds_in_update = 4  # 16
+        self.batch_size_per_seed = 8  # 32
 
         buffer_config = LevelBufferConfig(self.device, self.seeds)
         buffer_config.batch_size = self.batch_size_per_seed
@@ -356,7 +356,10 @@ class PLRBufferV2:
     def _sample_levels(self):
         # prev_transform = self.level_sampler.score_transform
         # self.level_sampler.score_transform = "power"
-        sample_weights = self.level_sampler.sample_weights()
+        if self.level_sampler.has_sampled_weights:
+            sample_weights = self.level_sampler.probs
+        else:
+            sample_weights = self.level_sampler.sample_weights()
         weights = sample_weights * self.valid_buffers
         if np.isclose(np.sum(weights), 0):
             weights = np.ones_like(weights, dtype=float) * self.valid_buffers
