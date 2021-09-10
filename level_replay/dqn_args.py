@@ -101,7 +101,7 @@ parser.add_argument("--seed", type=int, default=1)
 parser.add_argument("--seed_path", default=None)
 parser.add_argument("--staleness_coef", type=float, default=0.1)
 parser.add_argument("--staleness_temperature", type=float, default=1.0)
-parser.add_argument("--staleness_transform", default="rank")
+parser.add_argument("--staleness_transform", default="power")
 parser.add_argument("--value_loss_coef", type=float, default=0.5)
 parser.add_argument("--weight_log_interval", type=int, default=1)
 
