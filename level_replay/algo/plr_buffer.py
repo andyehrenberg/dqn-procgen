@@ -41,10 +41,10 @@ class PLRBuffer:
         self._init_seed_index(seeds)
 
         self.unseen_seed_weights = np.array([1.0] * len(self.seeds))
-        self.seed_scores = np.array([0.0] * len(self.seeds), dtype=np.float)
-        self.partial_seed_scores = np.zeros((self.num_actors, len(self.seeds)), dtype=np.float)
+        self.seed_scores = np.array([0.0] * len(self.seeds), dtype=float)
+        self.partial_seed_scores = np.zeros((self.num_actors, len(self.seeds)), dtype=float)
         self.partial_seed_steps = np.zeros((self.num_actors, len(self.seeds)), dtype=np.int64)
-        self.seed_staleness = np.array([0.0] * len(self.seeds), dtype=np.float)
+        self.seed_staleness = np.array([0.0] * len(self.seeds), dtype=float)
 
         self.next_seed_index = 0
 
