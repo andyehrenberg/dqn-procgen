@@ -402,6 +402,95 @@ class DQN(nn.Module):
             pass
 
 
+class ValueNetwork(nn.Module):
+    def __init__(self, args, env):
+        super(ValueNetwork, self).__init__()
+        self.action_space = env.action_space.n
+        self.make_network(args, env)
+
+    def make_network(self, args, env):
+        if args.env_name.startswith("MiniGrid"):
+            self.features = MiniGridCNN(args, env)
+            self.conv_output_size = self.features.image_embedding_size
+        else:
+            self.features = ImpalaCNN(env.observation_space.shape[0])
+            if env.observation_space.shape != (3, 64, 64):
+                example_state = torch.randn((1,) + env.observation_space.shape)
+                self.conv_output_size = self.features(example_state).shape[1]
+            else:
+                self.conv_output_size = 2048
+
+        self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc_z_v = nn.Linear(args.hidden_size, 1)
+
+        apply_init_(self.modules())
+        self.train()
+
+    def forward(self, x):
+        x_v = self.features1(x)
+        x_v = x_v.view(-1, self.conv_output_size)
+        value = self.fc_z_v(F.relu(self.fc_h_v(x_v))).view(-1, 1)
+        return value
+
+
+class AdvantageNetwork(nn.Module):
+    def __init__(self, args, env):
+        super(AdvantageNetwork, self).__init__()
+        self.action_space = env.action_space.n
+        self.make_network(args, env)
+
+    def make_network(self, args, env):
+        if args.env_name.startswith("MiniGrid"):
+            self.features = MiniGridCNN(args, env)
+            self.conv_output_size = self.features.image_embedding_size
+        else:
+            self.features = ImpalaCNN(env.observation_space.shape[0])
+            if env.observation_space.shape != (3, 64, 64):
+                example_state = torch.randn((1,) + env.observation_space.shape)
+                self.conv_output_size = self.features(example_state).shape[1]
+            else:
+                self.conv_output_size = 2048
+
+        self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+        self.fc_z_a = nn.Linear(args.hidden_size, 15)
+
+        apply_init_(self.modules())
+        self.train()
+
+    def forward(self, x):
+        x_a = self.features1(x)
+        x_a = x_a.view(-1, self.conv_output_size)
+        advantage = self.fc_z_a(F.relu(self.fc_h_a(x_a))).view(-1, self.action_space)
+        return advantage
+
+
+class DecoupledDQN(nn.Module):
+    def __init__(self, args, env):
+        super(DecoupledDQN, self).__init__()
+        self.action_space = env.action_space.n
+        self.make_network(args, env)
+
+    def make_network(self, args, env):
+        self.value = ValueNetwork(args, env)
+        self.advantage = AdvantageNetwork(args, env)
+
+    def forward(self, x):
+        value = self.value(x)
+        advantage = self.advantage(x)
+        q = value + advantage
+        return advantage, value, q
+
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.value.fc_h_v.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
+
+
 class SimpleDQN(nn.Module):
     def __init__(self, args, env):
         super(SimpleDQN, self).__init__()

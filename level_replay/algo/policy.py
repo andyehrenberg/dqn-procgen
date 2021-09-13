@@ -1,7 +1,7 @@
 import copy
 import torch
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC
+from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC, DecoupledDQN
 from torch.nn.utils import clip_grad_norm_
 
 import numpy as np
@@ -318,6 +318,182 @@ class DQNAgent(object):
         self.Q.load_state_dict(torch.load(f"{filename}Q_{self.iterations}"))
         self.Q_target = copy.deepcopy(self.Q)
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
+
+
+class DecoupledDQNAgent(object):
+    def __init__(self, args, env):
+        self.device = args.device
+        self.action_space = env.action_space.n
+        self.batch_size = args.batch_size
+        self.norm_clip = args.norm_clip
+        self.gamma = args.gamma
+
+        self.Q = DecoupledDQN(args, env).to(self.device)
+
+        self.Q_target = copy.deepcopy(self.Q)
+        self.V_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.value.parameters(), **args.optimizer_parameters
+        )
+        self.A_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.advantage.parameters(), **args.optimizer_parameters
+        )
+        for param in self.Q_target.parameters():
+            param.requires_grad = False
+
+        self.PER = args.PER
+        self.n_step = args.multi_step
+
+        self.min_priority = args.min_priority
+
+        # Target update rule
+        self.maybe_update_target = (
+            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
+        )
+        self.target_update_frequency = int(args.target_update // args.num_processes)
+        self.tau = args.tau
+
+        # Evaluation hyper-parameters
+        self.state_shape = (-1,) + env.observation_space.shape
+        self.eval_eps = args.eval_eps
+
+        # For seed bar chart
+        self.track_seed_weights = args.track_seed_weights
+        if self.track_seed_weights:
+            self.seed_weights = {
+                i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)
+            }
+
+        if args.drq or args.autodrq:
+            self.loss = self._loss_aug
+        else:
+            self.loss = self._loss
+
+        # Number of training iterations
+        self.iterations = 0
+
+    def select_action(self, state, eps=0.1, eval=False):
+        with torch.no_grad():
+            a, v, q = self.Q(state)
+            action = a.argmax(1).reshape(-1, 1)
+            return action, v
+
+    def get_value(self, state, eps=0.1):
+        with torch.no_grad():
+            _, v, _ = self.Q(state)
+            return v
+
+    def advantage(self, state, eps):
+        with torch.no_grad():
+            a, _, _ = self.Q(state)
+            return a
+
+    def train(self, replay_buffer):
+        ind, adv_loss, value_loss, priority = self.loss(replay_buffer)
+
+        self.A_optimizer.zero_grad()
+        adv_loss.backward()  # Backpropagate importance-weighted minibatch loss
+        clip_grad_norm_(self.Q.advantage.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        self.A_optimizer.step()
+
+        self.V_optimizer.zero_grad()
+        value_loss.backward()  # Backpropagate importance-weighted minibatch loss
+        clip_grad_norm_(self.Q.value.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        grad_magnitude = list(self.Q.value.named_parameters())[-2][1].grad.clone().norm()
+        self.V_optimizer.step()
+
+        # Update target network by polyak or full copy every X iterations.
+        self.iterations += 1
+        self.maybe_update_target()
+
+        if self.PER:
+            replay_buffer.update_priority(ind, priority)
+
+        return value_loss, grad_magnitude
+
+    def _loss(self, replay_buffer):
+        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
+
+        self.update_seed_weights(seeds, weights)
+
+        with torch.no_grad():
+            next_a, _, _ = self.Q(next_state)
+            _, target_v, _ = self.Q_target(next_state)
+            target_v = reward + not_done * (self.gamma ** self.n_step) * target_v
+            _, curr_v, _ = self.Q(state)
+            target_a = curr_v - target_v
+
+        curr_a, curr_v, curr_q = self.Q(state)
+        curr_a = curr_a.gather(1, action)
+
+        adv_loss = (weights * F.smooth_l1_loss(curr_a, target_a, reduction="none")).mean()
+        value_loss = (weights * F.smooth_l1_loss(curr_v, target_v, reduction="none")).mean()
+        priority = (curr_v - target_v).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+
+        return ind, adv_loss, value_loss, priority
+
+    def _loss_aug(self, replay_buffer):
+        (
+            state,
+            action,
+            next_state,
+            reward,
+            not_done,
+            seeds,
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        ) = replay_buffer.sample()
+
+        self.update_seed_weights(seeds, weights)
+
+        with torch.no_grad():
+            next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
+                1, next_action
+            )
+
+            next_action_aug = self.Q(next_state_aug).argmax(1).reshape(-1, 1)
+            target_Q_aug = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(
+                next_state_aug
+            ).gather(1, next_action_aug)
+
+            target_Q = (target_Q + target_Q_aug) / 2
+
+        current_Q = self.Q(state).gather(1, action)
+        current_Q_aug = self.Q(state_aug).gather(1, action)
+
+        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
+        loss += (weights * F.smooth_l1_loss(current_Q_aug, target_Q, reduction="none")).mean()
+        priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+
+        replay_buffer.aug_trans.change_randomization_params_all()
+
+        return ind, loss, priority
+
+    def update_seed_weights(self, seeds, weights):
+        if self.track_seed_weights:
+            for idx, seed in enumerate(seeds):
+                s = seed.cpu().numpy()[0]
+                if type(weights) != int and len(weights) > 1:
+                    self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
+                else:
+                    self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
+        else:
+            pass
+
+    def huber(self, td_errors, kappa=1.0):
+        return torch.where(
+            td_errors.abs() <= kappa, 0.5 * td_errors.pow(2), kappa * (td_errors.abs() - 0.5 * kappa)
+        )
+
+    def polyak_target_update(self):
+        for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def copy_target_update(self):
+        if self.iterations % self.target_update_frequency == 0:
+            self.Q_target.load_state_dict(self.Q.state_dict())
 
 
 class SACAgent(object):
