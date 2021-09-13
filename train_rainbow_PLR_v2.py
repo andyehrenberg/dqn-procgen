@@ -138,6 +138,18 @@ def train(args, seeds):
                     action[i] = torch.LongTensor([envs.action_space.sample()]).to(args.device)
             wandb.log({"Current Epsilon": cur_epsilon}, step=t * args.num_processes)
 
+        if t % 500 and not args.qrdqn or args.c51:
+            advantages = agent.advantage(state, epsilon(t))
+            mean_max_advantage = advantages.max(1)[0].mean()
+            mean_min_advantage = advantages.min(1)[0].mean()
+            wandb.log(
+                {
+                    "Mean Max Advantage": mean_max_advantage,
+                    "Mean Min Advantage": mean_min_advantage,
+                },
+                step=t * args.num_processes,
+            )
+
         # Perform action and log results
         next_state, reward, done, infos = envs.step(action)
         masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
@@ -217,12 +229,11 @@ def train(args, seeds):
             obs_id = rollouts.obs[-1]
             next_value = agent.get_value(obs_id).unsqueeze(1).detach()
 
-            rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
-
-            advantages = rollouts.returns - rollouts.value_preds
-            mean_advs = advantages.abs().mean().item()
-
-            wandb.log({"Mean Advantage": mean_advs}, step=t * args.num_processes)
+            if args.level_replay_strategy == "value_l1":
+                rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
+                advantages = rollouts.returns - rollouts.value_preds
+                mean_advs = advantages.abs().mean().item()
+                wandb.log({"Mean Advantage": mean_advs}, step=t * args.num_processes)
 
             if level_sampler:
                 level_sampler.update_with_rollouts(rollouts)
@@ -231,8 +242,6 @@ def train(args, seeds):
 
             if level_sampler:
                 level_sampler.after_update()
-
-            rollouts.after_update()
 
         if (t + 1) % int((num_steps - 1) / 10) == 0:
             count_data = [[seed, weight] for (seed, weight) in enumerate(level_sampler.seed_scores)]

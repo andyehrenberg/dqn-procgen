@@ -354,6 +354,7 @@ class DQNLevelSampler:
         self.staleness_transform = staleness_transform
         self.staleness_temperature = staleness_temperature
         self.has_sampled_weights = False
+        self.gamma = 0.99
 
         # Track seeds and scores as in np arrays backed by shared memory
         self._init_seed_index(seeds)
@@ -437,7 +438,7 @@ class DQNLevelSampler:
         value_preds = kwargs["value_preds"]
 
         max_t = len(rewards)
-        td_errors = (rewards[:-1] + value_preds[: max_t - 1] - value_preds[1:max_t]).abs()
+        td_errors = (rewards[:-1] + value_preds[: max_t - 1] - self.gamma * value_preds[1:max_t]).abs()
 
         return td_errors.abs().mean().item()
 
