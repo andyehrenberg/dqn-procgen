@@ -48,7 +48,6 @@ def train(args, seeds):
         + f"{'-dueling' if args.dueling else ''}"
         + f"{'-qrdqn' if args.qrdqn else ''}"
         + f"{'-c51' if args.c51 else ''}"
-        + f"{'-noisylayers' if args.noisy_layers else ''}"
         + f"{'-drq' if args.drq else ''}"
         + f"{'-autodrq' if args.autodrq else ''}"
         + f"{'-decoupled' if args.decoupled else ''}"
@@ -115,10 +114,6 @@ def train(args, seeds):
         )
 
     for t in range(num_steps):
-        if t % args.train_freq == 0:
-            if agent.Q.noisy_layers:
-                agent.Q.reset_noise()
-
         if t < args.start_timesteps:
             action = (
                 torch.LongTensor([envs.action_space.sample() for _ in range(args.num_processes)])
@@ -233,8 +228,6 @@ def train(args, seeds):
 
         # Train agent after collecting sufficient data
         if t % args.train_freq == 0 and t >= args.start_timesteps:
-            if agent.Q.noisy_layers:
-                agent.Q.reset_noise()
             loss, grad_magnitude = agent.train(replay_buffer)
             wandb.log(
                 {"Value Loss": loss, "Gradient magnitude": grad_magnitude},
