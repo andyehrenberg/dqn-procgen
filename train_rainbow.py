@@ -9,7 +9,7 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer, RolloutStorage
-from level_replay.algo.policy import DQNAgent
+from level_replay.algo.policy import DQNAgent, DecoupledDQNAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
@@ -51,6 +51,7 @@ def train(args, seeds):
         + f"{'-noisylayers' if args.noisy_layers else ''}"
         + f"{'-drq' if args.drq else ''}"
         + f"{'-autodrq' if args.autodrq else ''}"
+        + f"{'-decoupled' if args.decoupled else ''}"
     )
 
     num_levels = 1
@@ -74,7 +75,10 @@ def train(args, seeds):
 
     replay_buffer = make_buffer(args, envs)
 
-    agent = DQNAgent(args, envs)
+    if args.decoupled:
+        agent = DecoupledDQNAgent(args, envs)
+    else:
+        agent = DQNAgent(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
