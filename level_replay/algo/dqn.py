@@ -427,7 +427,7 @@ class ValueNetwork(nn.Module):
         self.train()
 
     def forward(self, x):
-        x_v = self.features1(x)
+        x_v = self.features(x)
         x_v = x_v.view(-1, self.conv_output_size)
         value = self.fc_z_v(F.relu(self.fc_h_v(x_v))).view(-1, 1)
         return value
@@ -458,7 +458,7 @@ class AdvantageNetwork(nn.Module):
         self.train()
 
     def forward(self, x):
-        x_a = self.features1(x)
+        x_a = self.features(x)
         x_a = x_a.view(-1, self.conv_output_size)
         advantage = self.fc_z_a(F.relu(self.fc_h_a(x_a))).view(-1, self.action_space)
         return advantage
