@@ -416,7 +416,6 @@ class DecoupledDQNAgent(object):
         self.update_seed_weights(seeds, weights)
 
         with torch.no_grad():
-            next_a, _, _ = self.Q(next_state)
             _, target_v, _ = self.Q_target(next_state)
             target_v = reward + not_done * (self.gamma ** self.n_step) * target_v
             _, curr_v, _ = self.Q(state)
@@ -425,11 +424,10 @@ class DecoupledDQNAgent(object):
         curr_a, curr_v, curr_q = self.Q(state)
         curr_a = curr_a.gather(1, action)
 
-        adv_loss = (weights * F.smooth_l1_loss(curr_a, target_a, reduction="none")).mean()
-        value_loss = (weights * F.smooth_l1_loss(curr_v, target_v, reduction="none")).mean()
-        priority = (curr_v - target_v).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+        adv_loss = F.mse_loss(curr_a, target_a, reduction="none").mean()
+        value_loss = F.mse_loss(curr_v, target_v, reduction="none").mean()
 
-        return ind, adv_loss, value_loss, priority
+        return ind, adv_loss, value_loss, None
 
     def _loss_aug(self, replay_buffer):
         (
