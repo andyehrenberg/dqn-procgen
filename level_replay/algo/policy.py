@@ -1,7 +1,7 @@
 import copy
 import torch
 import torch.nn.functional as F
-from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, SAC, DecoupledDQN
+from level_replay.algo.dqn import DQN, SimpleDQN, Conv_Q, ATCDQN, ATCEncoder, ATCContrast
 from torch.nn.utils import clip_grad_norm_
 
 import numpy as np
@@ -320,7 +320,7 @@ class DQNAgent(object):
         self.Q_optimizer.load_state_dict(torch.load(filename + "optimizer"))
 
 
-class DecoupledDQNAgent(object):
+class ATCAgent(object):
     def __init__(self, args, env):
         self.device = args.device
         self.action_space = env.action_space.n
@@ -328,16 +328,22 @@ class DecoupledDQNAgent(object):
         self.norm_clip = args.norm_clip
         self.gamma = args.gamma
 
-        self.Q = DecoupledDQN(args, env).to(self.device)
+        self.Q = ATCDQN(args, env).to(self.device)
 
         self.Q_target = copy.deepcopy(self.Q)
-        self.V_optimizer = getattr(torch.optim, args.optimizer)(
-            self.Q.value.parameters(), **args.optimizer_parameters
-        )
-        self.A_optimizer = getattr(torch.optim, args.optimizer)(
-            self.Q.advantage.parameters(), **args.optimizer_parameters
+        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
+            self.Q.parameters(), **args.optimizer_parameters
         )
         for param in self.Q_target.parameters():
+            param.requires_grad = False
+
+        self.encoder = ATCEncoder(self.Q.features).to(self.device)
+        self.contrast = ATCContrast().to(self.device)
+        self.target_encoder = copy.deepcopy(self.encoder)
+        self.ul_optimizer = getattr(torch.optim, args.optimizer)(
+            self.ul_parameters(), **args.optimizer_parameters
+        )
+        for param in self.target_encoder.parameters():
             param.requires_grad = False
 
         self.PER = args.PER
@@ -357,79 +363,63 @@ class DecoupledDQNAgent(object):
         self.eval_eps = args.eval_eps
 
         # For seed bar chart
-        self.track_seed_weights = args.track_seed_weights
+        self.track_seed_weights = False
         if self.track_seed_weights:
             self.seed_weights = {
                 i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)
             }
-
-        if args.drq or args.autodrq:
-            self.loss = self._loss_aug
-        else:
-            self.loss = self._loss
 
         # Number of training iterations
         self.iterations = 0
 
     def select_action(self, state, eps=0.1, eval=False):
         with torch.no_grad():
-            a, v, q = self.Q(state)
-            action = a.argmax(1).reshape(-1, 1)
+            features = self.encoder.encode(state)
+            q = self.Q(features)
+            action = q.argmax(1).reshape(-1, 1)
+            max_q = q.max(1)[0]
+            mean_q = q.mean(1)
+            v = (1 - eps) * max_q + eps * mean_q
             return action, v
 
     def get_value(self, state, eps=0.1):
         with torch.no_grad():
-            _, v, _ = self.Q(state)
+            features = self.encoder.encode(state)
+            q = self.Q(features)
+            max_q = q.max(1)[0]
+            mean_q = q.mean(1)
+            v = (1 - eps) * max_q + eps * mean_q
             return v
 
     def advantage(self, state, eps):
-        with torch.no_grad():
-            a, _, _ = self.Q(state)
-            return a
+        features = self.encoder.encode(state)
+        q = self.Q(features)
+        max_q = q.max(1)[0]
+        mean_q = q.mean(1)
+        v = (1 - eps) * max_q + eps * mean_q
+        return q - v.repeat(q.shape[1]).reshape(-1, q.shape[1])
 
     def train(self, replay_buffer):
-        ind, adv_loss, value_loss, priority = self.loss(replay_buffer)
+        ind, rl_loss, ul_loss, accuracy = self.loss(replay_buffer)
 
-        self.A_optimizer.zero_grad()
-        adv_loss.backward()  # Backpropagate importance-weighted minibatch loss
-        clip_grad_norm_(self.Q.advantage.parameters(), self.norm_clip)  # Clip gradients by L2 norm
-        self.A_optimizer.step()
+        self.Q_optimizer.zero_grad()
+        rl_loss.backward()  # Backpropagate importance-weighted minibatch loss
+        clip_grad_norm_(self.Q.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+        self.Q_optimizer.step()
 
-        self.V_optimizer.zero_grad()
-        value_loss.backward()  # Backpropagate importance-weighted minibatch loss
-        clip_grad_norm_(self.Q.value.parameters(), self.norm_clip)  # Clip gradients by L2 norm
-        grad_magnitude = list(self.Q.value.named_parameters())[-2][1].grad.clone().norm()
-        self.V_optimizer.step()
+        self.ul_optimizer.zero_grad()
+        ul_loss.backward()
+        clip_grad_norm_(self.ul_parameters(), self.norm_clip)
+        self.ul_optimizer.step()
 
         # Update target network by polyak or full copy every X iterations.
         self.iterations += 1
         self.maybe_update_target()
+        self.atc_target_update()
 
-        if self.PER:
-            replay_buffer.update_priority(ind, priority)
+        return rl_loss, accuracy
 
-        return value_loss, grad_magnitude
-
-    def _loss(self, replay_buffer):
-        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
-
-        self.update_seed_weights(seeds, weights)
-
-        with torch.no_grad():
-            _, target_v, _ = self.Q_target(next_state)
-            target_v = reward + not_done * (self.gamma ** self.n_step) * target_v
-            _, curr_v, _ = self.Q(state)
-            target_a = curr_v - target_v
-
-        curr_a, curr_v, curr_q = self.Q(state)
-        curr_a = curr_a.gather(1, action)
-
-        adv_loss = F.mse_loss(curr_a, target_a, reduction="none").mean()
-        value_loss = F.mse_loss(curr_v, target_v, reduction="none").mean()
-
-        return ind, adv_loss, value_loss, None
-
-    def _loss_aug(self, replay_buffer):
+    def loss(self, replay_buffer):
         (
             state,
             action,
@@ -443,47 +433,33 @@ class DecoupledDQNAgent(object):
             next_state_aug,
         ) = replay_buffer.sample()
 
-        self.update_seed_weights(seeds, weights)
-
         with torch.no_grad():
             next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
             target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
                 1, next_action
             )
 
-            next_action_aug = self.Q(next_state_aug).argmax(1).reshape(-1, 1)
-            target_Q_aug = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(
-                next_state_aug
-            ).gather(1, next_action_aug)
-
-            target_Q = (target_Q + target_Q_aug) / 2
-
         current_Q = self.Q(state).gather(1, action)
-        current_Q_aug = self.Q(state_aug).gather(1, action)
 
-        loss = (weights * F.smooth_l1_loss(current_Q, target_Q, reduction="none")).mean()
-        loss += (weights * F.smooth_l1_loss(current_Q_aug, target_Q, reduction="none")).mean()
-        priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
+        rl_loss = F.smooth_l1_loss(current_Q, target_Q, reduction="none").mean()
 
-        replay_buffer.aug_trans.change_randomization_params_all()
+        anchor = self.encoder(state_aug)
+        with torch.no_grad():
+            positive = self.target_encoder(next_state_aug)
 
-        return ind, loss, priority
+        logits = self.contrast(anchor, positive)
+        labels = torch.arange(state.shape[0], dtype=torch.long, device=self.device)
 
-    def update_seed_weights(self, seeds, weights):
-        if self.track_seed_weights:
-            for idx, seed in enumerate(seeds):
-                s = seed.cpu().numpy()[0]
-                if type(weights) != int and len(weights) > 1:
-                    self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-                else:
-                    self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
-        else:
-            pass
+        ul_loss = F.cross_entropy(logits, labels)
 
-    def huber(self, td_errors, kappa=1.0):
-        return torch.where(
-            td_errors.abs() <= kappa, 0.5 * td_errors.pow(2), kappa * (td_errors.abs() - 0.5 * kappa)
-        )
+        correct = torch.argmax(logits.detach(), dim=1) == labels
+        accuracy = torch.mean(correct.float())
+
+        return ind, rl_loss, ul_loss, accuracy
+
+    def ul_parameters(self):
+        yield from self.encoder.parameters()
+        yield from self.contrast.parameters()
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
@@ -493,138 +469,9 @@ class DecoupledDQNAgent(object):
         if self.iterations % self.target_update_frequency == 0:
             self.Q_target.load_state_dict(self.Q.state_dict())
 
-
-class SACAgent(object):
-    def __init__(self, args, env):
-        self.device = args.device
-        self.action_space = env.action_space.n
-        self.batch_size = args.batch_size
-        self.norm_clip = args.norm_clip
-        self.gamma = args.gamma
-
-        self.Q = DQN(args, env).to(self.device)
-        self.policy = SAC(args, env).to(self.device)
-        self.policy_optimizer = getattr(torch.optim, args.optimizer)(
-            self.policy.parameters(), **args.optimizer_parameters
-        )
-        self.Q_target = copy.deepcopy(self.Q)
-        self.Q_optimizer = getattr(torch.optim, args.optimizer)(
-            self.Q.parameters(), **args.optimizer_parameters
-        )
-        for param in self.Q_target.parameters():
-            param.requires_grad = False
-
-        self.target_entropy = -np.log(1.0 / self.action_space) * 0.98
-
-        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-        self.alpha = self.log_alpha.exp()
-        self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=args.learning_rate)
-
-        self.PER = args.PER
-        self.n_step = args.multi_step
-
-        self.min_priority = args.min_priority
-
-        # Target update rule
-        self.maybe_update_target = (
-            self.polyak_target_update if args.polyak_target_update else self.copy_target_update
-        )
-        self.target_update_frequency = int(args.target_update // args.num_processes)
-        self.tau = args.tau
-
-        # Evaluation hyper-parameters
-        self.state_shape = (-1,) + env.observation_space.shape
-        self.eval_eps = args.eval_eps
-
-        # For seed bar chart
-        self.seed_weights = {i: 0 for i in range(args.start_level, args.start_level + args.num_train_seeds)}
-
-        # Number of training iterations
-        self.iterations = 0
-
-    def select_action(self, x, explore=True):
-        if explore:
-            return self._explore(x)
-        else:
-            return self._exploit(x)
-
-    def _explore(self, x):
-        with torch.no_grad():
-            action, _, _ = self.policy.sample(x)
-            return action
-
-    def _exploit(self, x):
-        with torch.no_grad():
-            action = self.policy.act(x)
-            return action
-
-    def train(self, replay_buffer):
-        state, action, next_state, reward, not_done, seeds, ind, weights = replay_buffer.sample()
-
-        for idx, seed in enumerate(seeds):
-            s = seed.cpu().numpy()[0]
-            if self.PER:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + weights[idx].cpu().numpy()[0]
-            else:
-                self.seed_weights[s] = self.seed_weights.get(s, 0) + 1
-
-        q_loss, td = self.update_critic(state, action, next_state, reward, not_done, weights)
-        policy_loss, entropies = self.update_actor(state, action, next_state, reward, not_done, weights)
-        entropy_loss = self.update_alpha(entropies, weights)
-
-        if self.PER:
-            priority = td.clamp(min=self.min_priority).cpu().data.numpy().flatten()
-            replay_buffer.update_priority(ind, priority)
-
-        return q_loss, policy_loss, entropy_loss
-
-    def update_critic(self, state, action, next_state, reward, not_done, weights):
-        current_q = self.Q(state)
-        current_q = current_q.gather(1, action)
-
-        with torch.no_grad():
-            _, action_probs, log_action_probs = self.policy.sample(next_state)
-            next_q = self.Q_target(next_state)
-            next_q = (action_probs * next_q - self.alpha * log_action_probs).sum(dim=1, keepdim=True)
-            target_Q = reward + not_done * (self.gamma ** self.n_step) * next_q
-        td = torch.abs(current_q.detach() - target_Q)
-        q_loss = torch.mean((current_q - target_Q).pow(2) * weights)
-        self.Q_optimizer.zero_grad()
-        clip_grad_norm_(self.Q.parameters(), self.norm_clip)
-        q_loss.backward()
-        self.Q_optimizer.step()
-        return q_loss, td
-
-    def update_actor(self, state, action, next_state, reward, not_done, weights):
-        _, action_probs, log_action_probs = self.policy.sample(state)
-        with torch.no_grad():
-            q = self.Q(state)
-        entropies = -torch.sum(action_probs * log_action_probs, dim=1, keepdim=True)
-        q = torch.sum(q * action_probs, dim=1, keepdim=True)
-        policy_loss = (weights * (-q - self.alpha * entropies)).mean()
-        self.policy_optimizer.zero_grad()
-        clip_grad_norm_(self.policy.parameters(), self.norm_clip)
-        policy_loss.backward()
-        self.policy_optimizer.step()
-        return policy_loss, entropies.detach()
-
-    def update_alpha(self, entropies, weights):
-        entropy_loss = -torch.mean(self.log_alpha * (self.target_entropy - entropies) * weights)
-
-        self.alpha_optim.zero_grad()
-        entropy_loss.backward()
-        self.alpha_optim.step()
-        self.alpha = self.log_alpha.exp()
-
-        return entropy_loss
-
-    def polyak_target_update(self):
-        for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
-    def copy_target_update(self):
-        if self.iterations % self.target_update_frequency == 0:
-            self.Q_target.load_state_dict(self.Q.state_dict())
+    def atc_target_update(self):
+        for param, target_param in zip(self.encoder.parameters(), self.target_encoder.parameters()):
+            target_param.data.copy_(0.01 * param.data + 0.99 * target_param.data)
 
 
 class AtariAgent(object):

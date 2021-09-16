@@ -19,7 +19,7 @@ parser.add_argument("--noisy_layers", type=lambda x: bool(strtobool(x)), default
 parser.add_argument("--qrdqn", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--drq", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--autodrq", type=lambda x: bool(strtobool(x)), default=False)
-parser.add_argument("--decoupled", type=lambda x: bool(strtobool(x)), default=False)
+parser.add_argument("--atc", type=lambda x: bool(strtobool(x)), default=False)
 parser.add_argument("--simple_dqn", type=lambda x: bool(strtobool(x)), default=False, help="simple dqn arch")
 parser.add_argument("--learning_rate", type=float, default=2.5e-4, help="learning rate")
 parser.add_argument("--no_cuda", type=lambda x: bool(strtobool(x)), default=False, help="disables gpu")
