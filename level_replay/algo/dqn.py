@@ -491,6 +491,168 @@ class DecoupledDQN(nn.Module):
         return k
 
 
+class ATCEncoder(nn.Module):
+    def __init__(self, env):
+        super(ATCEncoder, self).__init__()
+        self.conv = ImpalaCNN(env.observation_space.shape[0])
+        self.conv_output_size = 2048
+        self.head = nn.Linear(self.conv_output_size, 256)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.view(-1, self.conv_output_size)
+        return self.head(x)
+
+    def encode(self, x):
+        x = self.conv(x)
+
+
+class ATCContrast(nn.Module):
+    def __init__(self):
+        super(ATCContrast, self).__init__()
+        self.fc1 = nn.Linear(256, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.W = nn.Linear(256, 256)
+
+    def forward(self, anchor, positive):
+        anchor_emb = self.fc2(F.relu(self.fc1(anchor)))
+        anchor = anchor + anchor_emb
+        pred = self.W(anchor)
+        logits = torch.matmul(pred, positive.T)
+        logits = logits - torch.max(logits, dim=1, keepdim=True)[0]
+        return logits
+
+
+class ATCDQN(nn.Module):
+    def __init__(self, args, env):
+        super(ATCDQN, self).__init__()
+        self.action_space = env.action_space.n
+        self.dueling = args.dueling
+        self.c51 = args.c51
+        self.qrdqn = args.qrdqn
+        self.noisy_layers = False
+        if self.c51:
+            self.atoms = args.atoms
+            self.support = torch.linspace(args.V_min, args.V_max, self.atoms).to(device=args.device)
+            self.V_min = args.V_min
+            self.V_max = args.V_max
+            self.delta_z = float(self.V_max - self.V_min) / (self.atoms - 1)
+        if self.qrdqn:
+            self.atoms = 200
+        self.make_network(args, env)
+        if not self.qrdqn:
+            self.forward = (
+                self._forward_c51
+                if self.c51
+                else (self._forward_dueling if self.dueling else self._forward_no_duel)
+            )
+        else:
+            self.quantiles = self._quantiles_dueling if self.dueling else self._quantiles_no_duel
+            self.forward = self._forward_qrdqn
+            taus = torch.arange(0, self.atoms + 1, device=args.device, dtype=torch.float32) / self.atoms
+            self.tau_hats = ((taus[1:] + taus[:-1]) / 2.0).view(1, self.atoms)
+            self.c51 = False
+
+    def make_network(self, args, env):
+        self.conv_output_size = 2048
+
+        if self.dueling and (self.c51 or self.qrdqn):
+            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_z_v = nn.Linear(args.hidden_size, self.atoms)
+            self.fc_z_a = nn.Linear(args.hidden_size, self.action_space * self.atoms)
+        elif self.dueling:
+            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_h_a = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_z_v = nn.Linear(args.hidden_size, 1)
+            self.fc_z_a = nn.Linear(args.hidden_size, self.action_space)
+        elif self.c51 or self.qrdqn:
+            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_z_v = nn.Linear(args.hidden_size, self.action_space * self.atoms)
+        else:
+            self.fc_h_v = nn.Linear(self.conv_output_size, args.hidden_size)
+            self.fc_z_v = nn.Linear(args.hidden_size, self.action_space)
+
+        apply_init_(self.modules())
+        self.train()
+
+    def _forward_c51(self, x, log=False):
+        dist = self.dist(x, log)
+        q = (dist * self.support).sum(-1)
+        return q
+
+    def _forward_qrdqn(self, x):
+        quantiles = self.quantiles(x)
+        q = quantiles.mean(1)
+        return q
+
+    def _forward_dueling(self, x):
+        x = x.view(-1, self.conv_output_size)
+        value = self.fc_z_v(F.relu(self.fc_h_v(x)))  # Value stream
+        advantage = self.fc_z_a(F.relu(self.fc_h_a(x)))  # Advantage stream
+        value, advantage = (
+            value.view(
+                -1,
+                1,
+            ),
+            advantage.view(-1, self.action_space),
+        )
+        q = value + advantage - advantage.mean(1, keepdim=True)  # Combine streams
+        return q
+
+    def _forward_no_duel(self, x):
+        x = x.view(-1, self.conv_output_size)
+        q = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.action_space)
+        return q
+
+    def effective_rank(self, delta=0.01):
+        _, s, _ = torch.svd(self.fc_h_v.weight)
+        diag_sum = torch.sum(s)
+        partial_sum = s[0]
+        k = 0
+        while (partial_sum / diag_sum) < (1 - delta):
+            k += 1
+            partial_sum += s[k]
+        return k
+
+    def dist(self, x, log=False):
+        x = x.view(-1, self.conv_output_size)
+        if self.dueling:
+            value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, 1, self.atoms)
+            advantage = self.fc_z_a(F.relu(self.fc_h_a(x))).view(-1, self.action_space, self.atoms)
+            q_atoms = value + advantage - advantage.mean(1, keepdim=True)
+        else:
+            q_atoms = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.action_space, self.atoms)
+
+        if log:
+            dist = F.log_softmax(q_atoms, dim=-1)
+        else:
+            dist = F.softmax(q_atoms, dim=-1)
+            dist = dist.clamp(min=1e-4)
+
+        return dist
+
+    def _quantiles_dueling(self, x):
+        x = x.view(-1, self.conv_output_size)
+        value = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.atoms, 1)
+        advantage = self.fc_z_a(F.relu(self.fc_h_a(x))).view(-1, self.atoms, self.action_space)
+        quantiles = value + advantage - advantage.mean(dim=2, keepdim=True)
+        return quantiles
+
+    def _quantiles_no_duel(self, x):
+        x = x.view(-1, self.conv_output_size)
+        quantiles = self.fc_z_v(F.relu(self.fc_h_v(x))).view(-1, self.atoms, self.action_space)
+        return quantiles
+
+    def reset_noise(self):
+        if self.noisy_layers:
+            for name, module in self.named_children():
+                if "fc" in name:
+                    module.reset_noise()
+        else:
+            pass
+
+
 class SimpleDQN(nn.Module):
     def __init__(self, args, env):
         super(SimpleDQN, self).__init__()

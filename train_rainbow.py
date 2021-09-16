@@ -9,7 +9,7 @@ import torch
 import wandb
 from level_replay import utils
 from level_replay.algo.buffer import make_buffer, RolloutStorage
-from level_replay.algo.policy import DQNAgent, DecoupledDQNAgent
+from level_replay.algo.policy import DQNAgent, ATCAgent
 from level_replay.dqn_args import parser
 from level_replay.envs import make_dqn_lr_venv
 from level_replay.utils import ppo_normalise_reward, min_max_normalise_reward
@@ -72,12 +72,13 @@ def train(args, seeds):
         level_sampler_args=level_sampler_args,
     )
 
-    replay_buffer = make_buffer(args, envs)
-
-    if args.decoupled:
-        agent = DecoupledDQNAgent(args, envs)
+    if args.atc:
+        args.drq = True
+        agent = ATCAgent(args, envs)
     else:
         agent = DQNAgent(args, envs)
+
+    replay_buffer = make_buffer(args, envs)
 
     level_seeds = torch.zeros(args.num_processes)
     if level_sampler:
