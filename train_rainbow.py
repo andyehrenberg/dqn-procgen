@@ -50,7 +50,7 @@ def train(args, seeds):
         + f"{'-c51' if args.c51 else ''}"
         + f"{'-drq' if args.drq else ''}"
         + f"{'-autodrq' if args.autodrq else ''}"
-        + f"{'-decoupled' if args.decoupled else ''}"
+        + f"{'-atc' if args.atc else ''}"
     )
 
     num_levels = 1
