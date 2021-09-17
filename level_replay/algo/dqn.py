@@ -505,6 +505,7 @@ class ATCEncoder(nn.Module):
 
     def encode(self, x):
         x = self.conv(x)
+        return x
 
 
 class ATCContrast(nn.Module):

@@ -2,15 +2,15 @@ import numpy as np
 import torch
 from dataclasses import dataclass
 
-from level_replay.algo.buffer import Buffer
+from level_replay.algo.buffer import Buffer, AugBuffer
 
 
 @dataclass
 class LevelBufferConfig:
-    batch_size = 32
-    memory_capacity = 5000
     device: str
     seeds: list
+    batch_size = 32
+    memory_capacity = 5000
     ptr = 0
     size = 0
     PER = False
@@ -34,6 +34,7 @@ class PLRBuffer:
         self.alpha = 1.0
         self.staleness_coef = 0.1
         self.staleness_temperature = 1.0
+        self.drq = args.drq
 
         self.num_seeds_in_update = 64
         self.batch_size_per_seed = 32
@@ -51,7 +52,10 @@ class PLRBuffer:
         buffer_config = LevelBufferConfig(self.device, self.seeds)
         buffer_config.batch_size = self.batch_size_per_seed
 
-        self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
+        if args.drq:
+            self.buffers = {seed: AugBuffer(buffer_config, env) for seed in self.seeds}
+        else:
+            self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
         self.valid_buffers = np.array([0.0] * len(self.seeds), dtype=np.float)
 
     def add(self, state, action, next_state, reward, done, seed):
@@ -321,7 +325,11 @@ class PLRBufferV2:
         buffer_config = LevelBufferConfig(self.device, self.seeds)
         buffer_config.batch_size = self.batch_size_per_seed
 
-        self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
+        if args.drq:
+            self.buffers = {seed: AugBuffer(buffer_config, env) for seed in self.seeds}
+        else:
+            self.buffers = {seed: Buffer(buffer_config, env) for seed in self.seeds}
+
         self.valid_buffers = np.array([0.0] * len(self.seeds), dtype=np.float)
 
     def add(self, state, action, next_state, reward, done, seed):
