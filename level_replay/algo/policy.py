@@ -337,7 +337,7 @@ class ATCAgent(object):
         for param in self.Q_target.parameters():
             param.requires_grad = False
 
-        self.encoder = ATCEncoder(self.Q.features).to(self.device)
+        self.encoder = ATCEncoder(env).to(self.device)
         self.contrast = ATCContrast().to(self.device)
         self.target_encoder = copy.deepcopy(self.encoder)
         self.ul_optimizer = getattr(torch.optim, args.optimizer)(
