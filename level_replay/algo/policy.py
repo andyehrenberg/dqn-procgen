@@ -431,15 +431,15 @@ class ATCAgent(object):
             weights,
             state_aug,
             next_state_aug,
-        ) = replay_buffer.sample()
+        ) = replay_buffer.sample_atc()
 
         with torch.no_grad():
-            next_action = self.Q(next_state).argmax(1).reshape(-1, 1)
-            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(next_state).gather(
-                1, next_action
-            )
+            next_action = self.Q(self.encoder.encode(next_state)).argmax(1).reshape(-1, 1)
+            target_Q = reward + not_done * (self.gamma ** self.n_step) * self.Q_target(
+                self.target_encoder.encode(next_state)
+            ).gather(1, next_action)
 
-        current_Q = self.Q(state).gather(1, action)
+        current_Q = self.Q(self.encoder.encode(state)).gather(1, action)
 
         rl_loss = F.smooth_l1_loss(current_Q, target_Q, reduction="none").mean()
 
