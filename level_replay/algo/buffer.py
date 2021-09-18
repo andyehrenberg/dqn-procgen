@@ -199,6 +199,42 @@ class AugBuffer(Buffer):
             next_state_aug,
         )
 
+    def sample_atc(self):
+        if self.prioritized:
+            ind = self.tree.sample(self.batch_size)
+            weights = np.array(self.tree.nodes[-1][ind]) ** -self.beta
+            weights = torch.FloatTensor(weights / weights.max()).to(self.device).reshape(-1, 1)
+            self.beta = min(self.beta + self.beta_stepper, 1)
+        else:
+            ind = np.random.randint(0, self.size, size=self.batch_size)
+            weights = torch.FloatTensor([1]).to(self.device)
+
+        state = self.state[ind]
+        next_state = self.next_state[ind]
+        state_aug = state.copy()
+        next_state_aug = next_state.copy()
+
+        state = torch.as_tensor(state, device=self.device).float() / 255.0
+        next_state = torch.as_tensor(next_state, device=self.device).float() / 255.0
+        state_aug = torch.as_tensor(state_aug, device=self.device).float() / 255.0
+        next_state_aug = torch.as_tensor(next_state_aug, device=self.device).float() / 255.0
+
+        state_aug = self.aug_trans(state_aug)
+        next_state_aug = self.aug_trans(next_state_aug)
+
+        return (
+            state,
+            torch.LongTensor(self.action[ind]).to(self.device),
+            next_state,
+            torch.FloatTensor(self.reward[ind]).to(self.device),
+            torch.FloatTensor(self.not_done[ind]).to(self.device),
+            torch.LongTensor(self.seeds[ind]).to(self.device),
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        )
+
 
 class AutoAugBuffer(Buffer):
     def __init__(self, args, env):
