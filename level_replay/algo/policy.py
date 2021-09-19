@@ -53,7 +53,10 @@ class DQNAgent(object):
         if self.Q.c51:
             self.loss = self._loss_c51
         elif self.Q.qrdqn:
-            self.loss = self._loss_qrdqn
+            if args.drq:
+                self.loss = self._loss_qrdqn_aug
+            else:
+                self.loss = self._loss_qrdqn
             self.kappa = 1.0
             self.cumulative_density = np.array((2 * np.arange(self.Q.atoms) + 1) / (2.0 * self.Q.atoms))
             self.cumulative_density = torch.from_numpy(self.cumulative_density).to(self.device)
@@ -188,6 +191,59 @@ class DQNAgent(object):
         current_quantiles = torch.gather(current_quantiles, dim=2, index=actions).squeeze(dim=2)
 
         loss, td = self.quantile_huber_loss(current_quantiles, target_quantiles, weights)
+
+        priority = (
+            td.abs()
+            .clamp(min=self.min_priority)
+            .detach()
+            .sum(dim=1)
+            .mean(dim=1, keepdim=True)
+            .cpu()
+            .numpy()
+            .flatten()
+        )
+
+        return ind, loss, priority
+
+    def _loss_qrdqn_aug(self, replay_buffer):
+        (
+            state,
+            action,
+            next_state,
+            reward,
+            not_done,
+            seeds,
+            ind,
+            weights,
+            state_aug,
+            next_state_aug,
+        ) = replay_buffer.sample()
+
+        self.update_seed_weights(seeds, weights)
+
+        with torch.no_grad():
+            next_quantiles = self.Q_target.quantiles(next_state)
+            next_greedy_actions = next_quantiles.mean(dim=1, keepdim=True).argmax(dim=2, keepdim=True)
+            next_greedy_actions = next_greedy_actions.expand(self.batch_size, self.Q.atoms, 1)
+            next_quantiles = next_quantiles.gather(dim=2, index=next_greedy_actions).squeeze(dim=2)
+            target_quantiles = reward + not_done * self.gamma ** self.n_step * next_quantiles
+
+            next_quantiles_aug = self.Q_target.quantiles(next_state_aug)
+            next_greedy_actions_aug = next_quantiles_aug.mean(dim=1, keepdim=True).argmax(dim=2, keepdim=True)
+            next_greedy_actions_aug = next_greedy_actions_aug.expand(self.batch_size, self.Q.atoms, 1)
+            next_quantiles_aug = next_quantiles_aug.gather(dim=2, index=next_greedy_actions).squeeze(dim=2)
+            target_quantiles_aug = reward + not_done * self.gamma ** self.n_step * next_quantiles_aug
+
+            target_quantiles = (target_quantiles + target_quantiles_aug) / 2
+
+        current_quantiles = self.Q.quantiles(state)
+        current_quantiles_aug = self.Q.quantiles(state_aug)
+        actions = action[..., None].long().expand(self.batch_size, self.Q.atoms, 1)
+        current_quantiles = torch.gather(current_quantiles, dim=2, index=actions).squeeze(dim=2)
+        current_quantiles_aug = torch.gather(current_quantiles_aug, dim=2, index=actions).squeeze(dim=2)
+
+        loss, td = self.quantile_huber_loss(current_quantiles, target_quantiles, weights)
+        loss += self.quantile_huber_loss(current_quantiles_aug, target_quantiles_aug, weights)[0]
 
         priority = (
             td.abs()
