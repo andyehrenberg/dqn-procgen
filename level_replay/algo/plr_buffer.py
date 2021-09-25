@@ -30,6 +30,7 @@ class PLRBufferV2:
 
         buffer_config = LevelBufferConfig(self.device, self.seeds)
         buffer_config.batch_size = self.batch_size_per_seed
+        self.drq = args.drq
 
         if args.drq:
             self.buffers = {seed: AugBuffer(buffer_config, env) for seed in self.seeds}
@@ -47,6 +48,8 @@ class PLRBufferV2:
         self.level_sampler = level_sampler
 
     def sample(self):
+        if self.drq:
+            return self.sample_aug()
         sub_batch = int(self.batch_size_per_seed)
         batch_size = self.num_seeds_in_update * self.batch_size_per_seed
         state = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
@@ -66,6 +69,43 @@ class PLRBufferV2:
             seeds[i * sub_batch : (i + 1) * sub_batch] = seeds_
 
         return state, action, next_state, reward, not_done, seeds, 0, 1
+
+    def sample_aug(self):
+        sub_batch = int(self.batch_size_per_seed)
+        batch_size = self.num_seeds_in_update * self.batch_size_per_seed
+        state = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        action = torch.empty((batch_size, 1), dtype=torch.long, device=self.device)
+        next_state = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        reward = torch.empty((batch_size, 1), dtype=torch.float, device=self.device)
+        not_done = torch.empty((batch_size, 1), dtype=torch.float, device=self.device)
+        seeds = torch.empty((batch_size, 1), dtype=torch.long, device=self.device)
+        state_aug = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        next_state_aug = torch.empty((batch_size,) + self.obs_space, dtype=torch.float, device=self.device)
+        levels = self._sample_levels()
+
+        for i, seed in enumerate(levels):
+            (
+                state_,
+                action_,
+                next_state_,
+                reward_,
+                not_done_,
+                seeds_,
+                _,
+                _,
+                state_aug_,
+                next_state_aug_,
+            ) = self.buffers[seed].sample()
+            state[i * sub_batch : (i + 1) * sub_batch] = state_
+            action[i * sub_batch : (i + 1) * sub_batch] = action_
+            next_state[i * sub_batch : (i + 1) * sub_batch] = next_state_
+            reward[i * sub_batch : (i + 1) * sub_batch] = reward_
+            not_done[i * sub_batch : (i + 1) * sub_batch] = not_done_
+            seeds[i * sub_batch : (i + 1) * sub_batch] = seeds_
+            state_aug[i * sub_batch : (i + 1) * sub_batch] = state_aug_
+            next_state_aug[i * sub_batch : (i + 1) * sub_batch] = next_state_aug_
+
+        return state, action, next_state, reward, not_done, seeds, 0, 1, state_aug, next_state_aug
 
     def _sample_levels(self):
         # prev_transform = self.level_sampler.score_transform
