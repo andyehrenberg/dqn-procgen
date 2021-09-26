@@ -294,8 +294,6 @@ class DQNAgent(object):
         loss += (weights * F.smooth_l1_loss(current_Q_aug, target_Q, reduction="none")).mean()
         priority = (current_Q - target_Q).abs().clamp(min=self.min_priority).cpu().data.numpy().flatten()
 
-        replay_buffer.aug_trans.change_randomization_params_all()
-
         return ind, loss, priority
 
     def update_seed_weights(self, seeds, weights):
